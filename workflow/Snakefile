@@ -15,7 +15,8 @@ rule read_fcs_meta:
     input:
         "resources/fcs_wg2",
     output:
-        "results/intermediate/fcs_meta.tsv.gz",
+        header="results/intermediate/meta/fcs_header.tsv.gz",
+        params="results/intermediate/meta/fcs_params.tsv.gz",
     conda:
         "envs/flowcore.yml"
     threads: 16
@@ -27,7 +28,8 @@ rule read_fcs_events:
     input:
         fcs="resources/fcs_wg2",
         linkage=rules.format_linkage.output.table,
-        meta=rules.read_fcs_meta.output,
+        tfs_mapping="static/time_fsc_ssc_mapping.tsv",
+        meta=rules.read_fcs_meta.output.header,
     output:
         summary="results/intermediate/fcs_events_summary.tsv.gz",
         time="results/intermediate/fcs_events_time.tsv.gz",
@@ -38,6 +40,22 @@ rule read_fcs_events:
         "scripts/R/read_fcs_events.R"
 
 
+rule run_qc:
+    input:
+        combos="static/wg2_combinations.tsv",
+        event=rules.read_fcs_events.output.summary,
+        meta=rules.read_fcs_meta.output.header,
+        params=rules.read_fcs_meta.output.params,
+        linkage=rules.format_linkage.output.table,
+    output:
+        errors="results/final/qc/errors.pdf",
+        missing="results/final/qc/missing_channels.tsv",
+    conda:
+        "envs/flowcore.yml"
+    script:
+        "scripts/R/run_qc.R"
+
+
 rule all:
     input:
-        rules.read_fcs_events.output,
+        rules.run_qc.output,

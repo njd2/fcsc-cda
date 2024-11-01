@@ -8,32 +8,36 @@ ensure_empty <- function(df, msg) {
 }
 
 find_fuzzy_channel <- function(pat, channels) {
-  .pat <- pat %>%
-    str_replace("\\(", "\\\\(") %>%
-    str_replace("\\)", "\\\\)") %>%
-    sprintf("^%s((-| )(A|Area))?$", .)
-  cs <- channels[str_detect(channels, .pat)]
-  if (length(cs) == 1) {
-    # return the single area channel
-    cs[[1]]
-  } else {
+  if (is.na(pat)) {
     NA
+  } else {
+    .pat <- pat %>%
+      str_replace("\\(", "\\\\(") %>%
+      str_replace("\\)", "\\\\)") %>%
+      sprintf("^%s((-| )(A|Area))?$", .)
+    cs <- channels[str_detect(channels, .pat)]
+    if (length(cs) == 1) {
+      # return the single area channel
+      cs[[1]]
+    } else {
+      NA
+    }
   }
 }
 
-find_time_channel <- function(channels) {
-  if (any(channels == "Time")) {
-    "Time"
-  } else if (any(channels == "HDR-T")) {
-    # not sure what this actually means but it appears to be a time channel
-    # (monotonic with exponential-ish differences resembling a poisson process)
-    "HDR-T"
-  } else if (any(channels == "TIME")) {
-    "TIME"
-  } else {
-    NA
-  }
-}
+## find_time_channel <- function(channels) {
+##   if (any(channels == "Time")) {
+##     "Time"
+##   } else if (any(channels == "HDR-T")) {
+##     # not sure what this actually means but it appears to be a time channel
+##     # (monotonic with exponential-ish differences resembling a poisson process)
+##     "HDR-T"
+##   } else if (any(channels == "TIME")) {
+##     "TIME"
+##   } else {
+##     NA
+##   }
+## }
 
 get_timestep <- function(fcs) {
   x <- flowCore::keyword(fcs)[["$TIMESTEP"]]
@@ -41,7 +45,7 @@ get_timestep <- function(fcs) {
 }
 
 # TODO deal with truncation warnings
-fcs_to_event_df <- function(path, i, df_mapping) {
+fcs_to_event_df <- function(path, i, df_mapping, df_tfs) {
   sf <- str_split_1(basename(path), "_")
   .org <- sf[3]
   .machine <- sf[4]
@@ -50,18 +54,20 @@ fcs_to_event_df <- function(path, i, df_mapping) {
   channel_mapping <- df_mapping %>%
     filter(org == .org, machine == .machine) %>%
     select(std_name, machine_name)
-  time_channel <- find_time_channel(fcs_channel_names)
-  all_std_names <- c(channel_mapping$std_name, "fsc", "ssc", "time")
+  tfs_mapping <- df_tfs %>%
+    filter(org == .org, machine == .machine) %>%
+    select(std_name, machine_name)
+  all_mapping <-  bind_rows(channel_mapping, tfs_mapping)
+  ## time_channel <- find_time_channel(fcs_channel_names)
+  all_std_names <- all_mapping$std_name
   n <- nrow(fcs@exprs)
   if (n == 0) {
     NULL
   } else {
-    # ASSUME that each org/machine has all 8 channels and that they are
+    # ASSUME that each org/machine has all 11 channels and that they are
     # all in the same order
-    m <- channel_mapping$machine_name %>%
-      c("FSC", "SSC") %>%
+    m <- all_mapping$machine_name %>%
       map_chr(~ find_fuzzy_channel(.x, fcs_channel_names)) %>%
-      c(time_channel) %>%
       map(~ if (is.na(.x)) { rep(NA, n) } else { fcs@exprs[, .x] }) %>%
       unlist() %>%
       matrix(nrow = n, byrow = FALSE)
@@ -97,11 +103,20 @@ df_channels <- read_tsv(
   )
 )
 
+df_tfs <- read_tsv(snakemake@input[["tfs_mapping"]], col_types = "cccc")
+
 df_meta %>%
   anti_join(df_channels, by = c("org", "machine")) %>%
   select(org, machine) %>%
   unique() %>%
   ensure_empty("all org/machine combos should have a channel linkage")
+
+# TODO booooooo this is redundant
+df_meta %>%
+  anti_join(df_tfs, by = c("org", "machine")) %>%
+  select(org, machine) %>%
+  unique() %>%
+  ensure_empty("all org/machine combos should have a tfs linkage")
 
 root <- snakemake@input[["fcs"]]
 
@@ -110,7 +125,7 @@ future::plan(future::multisession, workers = snakemake@threads)
 df <- df_meta %>%
   mutate(paths = map2(file.path(root, filename), index, list)) %>%
   pull(paths) %>%
-  furrr::future_map(~ fcs_to_event_df(.x[[1]], .x[[2]], df_channels)) %>%
+  furrr::future_map(~ fcs_to_event_df(.x[[1]], .x[[2]], df_channels, df_tfs)) %>%
   do.call(rbind, .) %>%
   as_tibble()
 

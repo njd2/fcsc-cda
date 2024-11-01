@@ -42,6 +42,8 @@ fcs_to_metadata_df <- function(path, i) {
   sf <- str_split_1(basename(path), "_")
   fcs <- flowCore::read.FCS(path, truncate_max_range = FALSE, emptyValue = FALSE)
   kw <- flowCore::keyword(fcs)
+  params <- fcs@parameters@data %>%
+    as_tibble()
   tibble(
     # primary key
     index = i,
@@ -63,8 +65,8 @@ fcs_to_metadata_df <- function(path, i) {
     run_date = get_kw(kw, "$DATE"),
     operator = get_kw(kw, "$OP"),
     serial = get_kw(kw, "$CYTSN"),
-    total = get_kw(kw, "$TOT")
-    # TODO add ranges?
+    total = get_kw(kw, "$TOT"),
+    params = list(params)
   )
 }
 
@@ -79,6 +81,7 @@ df_pre <- all_fcs_paths %>%
   furrr::future_imap_dfr(~ fcs_to_metadata_df(.x, .y))
 
 df <- df_pre %>%
+  select(-params) %>%
   mutate(
     volume = as.double(volume),
     run_length = period_to_seconds(hms(etime) - hms(btime)),
@@ -88,5 +91,10 @@ df <- df_pre %>%
   relocate(machine, org) %>%
   arrange(machine, org, sop, exp)
 
+df_all_channels <- df_pre %>%
+  select(org, machine, sop, exp, material, rep, params) %>%
+  unnest(params) %>%
+  write_tsv(snakemake@output[["params"]])
+
 df %>%
-  write_tsv(snakemake@output[[1]])
+  write_tsv(snakemake@output[["header"]])

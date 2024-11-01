@@ -50,8 +50,66 @@ df_channel <- read.xlsx(channel_file) %>%
   ) %>%
   # fix typos
   mutate(org = if_else(org == "BMSSeattle" & machine == "CantoSORP", "BMSWarren", org)) %>%
+  mutate(
+    machine_name = case_when(
+      # just this one channel is malformed
+      machine == "AriaIII" & org == "FDACBER" ~
+        if_else(machine_name == "Pacific Blue", "BV421", machine_name),
+      # imagestream concats this thingy to the front
+      machine == "ImageStreamX-1" ~ sprintf("Intensity_MC_%s", machine_name),
+      # the cell stream is a fun thing
+      str_detect(machine, "CellStream") & org == "LMNXSEA" ~ case_when(
+        std_name == "v450" ~ "UCI_405 - 456/51 - A2",
+        std_name == "v500" ~ "UCI_405 - 528/46 - A3",
+        std_name == "fitc" ~ "UCI_488 / 730 - 528/46 - C3",
+        std_name == "pe" ~ "UCI_488 / 730 - 583/24 - C4",
+        std_name == "pc7" ~ "UCI_488 / 730 - 773/56 - C1",
+        std_name == "pc55" ~ "UCI_488 / 730 - 702/87 - C6",
+        std_name == "apc" ~ "UCI_375 / 642 - 702/87 - B6",
+        std_name == "ac7" ~ "UCI_375 / 642 - 773/56 - B1",
+      ),
+      str_detect(machine, "CellStream") & org == "CellBio" ~ case_when(
+        std_name == "v450" ~ "UCI_405 - 456/51 - A2",
+        std_name == "v500" ~ "UCI_405 - 528/46 - A3",
+        std_name == "fitc" ~ "UCI_488 - 528/46 - C3",
+        std_name == "pe" ~ "UCI_488 - 583/24 - C4",
+        std_name == "pc7" ~ "UCI_488 - 773/56 - C1",
+        std_name == "pc55" ~ "UCI_488 - 702/87 - C6",
+        std_name == "apc" ~ "UCI_375/642 - 702/87 - B6",
+        std_name == "ac7" ~ "UCI_375/642 - 773/56 - B1",
+      ),
+      # not sure what happened here
+      machine %in% c("MQA10-1", "MQA10-2") & org == "BMSWarren" ~ case_when(
+        machine_name == "FL1" ~ "V1",
+        machine_name == "FL2" ~ "V2",
+        machine_name == "FL3" ~ "B1",
+        machine_name == "FL4" ~ "B2",
+        machine_name == "FL5" ~ "B3",
+        machine_name == "FL6" ~ "B4",
+        machine_name == "FL7" ~ "R1",
+        machine_name == "FL8" ~ "R2",
+      ),
+      # not sure what happened here either
+      org == "AgilentSD" & machine == "Penteon" ~ case_when(
+        machine_name == "B530" ~ "B525",
+        machine_name == "V530" ~ "V525",
+        TRUE ~ machine_name
+      ),
+      # or here
+      org == "BDSJ" ~ case_when(
+        machine_name == "488/527/32" ~ "FITC",
+        machine_name == "488/586/42" ~ "PE",
+        machine_name == "488/700/54" ~ "PerCP-Cy5.5",
+        machine_name == "488/783/56" ~ "PE-Cy7",
+        machine_name == "640/660/10" ~ "APC",
+        machine_name == "640/783/56" ~ "APC-Cy7",
+        machine_name == "405/448/45" ~ "Pacific Blue",
+        machine_name == "405/528/45" ~ "Aqua Dye"
+      ),
+      TRUE ~ machine_name
+    )
+  ) %>%
   mutate(std_name_long = str_replace(std_name_long, " \\(FC Beads\\)", ""))
-
 
 # TEST: all lasers and filters in each org/machine/channel should be the same
 # (we don't care about X-A vs X-W channels, we strip off the ends so both become
