@@ -1,0 +1,8 @@
+name: flowcore-test
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-tidyverse
+  - bioconductor-flowcore
+  - r-openxlsx
