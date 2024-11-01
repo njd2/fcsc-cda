@@ -1,0 +1,43 @@
+rule format_linkage:
+    input:
+        "resources/wg2_linkage.xlsx",
+    output:
+        table="results/intermediate/linkage/wg2_linkage.tsv",
+        ex_em="results/intermediate/linkage/wg2_ex_em.pdf",
+        defined="results/intermediate/linkage/wg2_defined_channels.pdf",
+    conda:
+        "envs/xlsx.yml"
+    script:
+        "scripts/R/format_linkage.R"
+
+
+rule read_fcs_meta:
+    input:
+        "resources/fcs_wg2",
+    output:
+        "results/intermediate/fcs_meta.tsv.gz",
+    conda:
+        "envs/flowcore.yml"
+    threads: 16
+    script:
+        "scripts/R/read_fcs_meta.R"
+
+
+rule read_fcs_events:
+    input:
+        fcs="resources/fcs_wg2",
+        linkage=rules.format_linkage.output.table,
+        meta=rules.read_fcs_meta.output,
+    output:
+        summary="results/intermediate/fcs_events_summary.tsv.gz",
+        time="results/intermediate/fcs_events_time.tsv.gz",
+    conda:
+        "envs/flowcore.yml"
+    threads: 16
+    script:
+        "scripts/R/read_fcs_events.R"
+
+
+rule all:
+    input:
+        rules.read_fcs_events.output,

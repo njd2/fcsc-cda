@@ -1,8 +1,7 @@
-name: fcsc-cda-flowcore
+name: fcsc-cda-xlsx
 channels:
   - conda-forge
   - bioconda
 dependencies:
   - r-tidyverse
-  - bioconductor-flowcore
-  - r-furrr
+  - r-openxlsx
