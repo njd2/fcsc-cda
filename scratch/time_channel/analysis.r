@@ -67,11 +67,11 @@ get_step_gates <- function(acc, start_index, time_diffs, thresh, min_size) {
   }
 }
 
-build_step_gates <- function(df, index) {
+build_step_gates <- function(df, index, thresh, min_size) {
   i0 <- min(df$event_index)
   i1 <- max(df$event_index)
-  thresh <- log10(100 / 50)
-  inner_gates <- get_step_gates(integer(), i0, df$tdiff, thresh, 500)
+  .thresh <- log10(100 / thresh)
+  inner_gates <- get_step_gates(integer(), i0, df$tdiff, .thresh, min_size)
   # minus 1 because the diff vector is N - 1
   realstart <- i0 - 1
   if (length(inner_gates) == 0) {
@@ -88,6 +88,17 @@ build_step_gates <- function(df, index) {
     )
   }
 }
+
+THRESH <- 50
+MIN_SIZE <- 500
+
+MIN_EVENT_SOP1 <- 2e4
+MIN_EVENT_SOP2 <- 1.5e4
+MIN_EVENT_SOP3 <- 5e4
+
+#
+# 0) Read stuff
+#
 
 df_meta <- read_tsv(
   "../../results/intermediate/meta/fcs_header.tsv.gz",
@@ -106,17 +117,23 @@ df_meta <- read_tsv(
   )
 )
 
+df_time_all <- read_tsv("../../results/intermediate/fcs_events_time.tsv.gz", col_types = "iid")
+
 df_meta_min <- df_meta %>%
   mutate(
     min_events = case_when(
-      sop == 1 ~ 2e4,
-      sop == 2 ~ 1.5e4,
-      sop == 3 ~ 5e4
+      sop == 1 ~ MIN_EVENT_SOP1,
+      sop == 2 ~ MIN_EVENT_SOP2,
+      sop == 3 ~ MIN_EVENT_SOP3
     )
   ) %>%
   select(index, min_events)
 
-df_time_all <- read_tsv("../../results/intermediate/fcs_events_time.tsv.gz", col_types = "iid")
+#
+# 1) Get all fcs files that don't have the required number of events in them.
+# Exclude these from the files we will analyze later to lower the computational
+# burden ;)
+#
 
 df_low_event <- df_time_all %>%
   group_by(index) %>%
@@ -124,6 +141,26 @@ df_low_event <- df_time_all %>%
   left_join(df_meta_min, by = "index") %>%
   filter(n < min_events) %>%
   mutate(diff = min_events - n)
+
+#
+# 2) Find anomalies in the time channel.
+#
+# There are 2 anomalies we care about
+# - large pauses: These are usually due to a clog, bubble, tripping over power
+#   cables, etc. They appear as large "gaps" in the time vs event index curve.
+# - large non-monotonic deviations: In theory, the time vs event curve should
+#   increase monotonically, since events with a higher index occur after those
+#   with a lower index. In some cases, the time channel is "noisy" enough so
+#   that this isn't true, but the non-monotonicity is usually small. In other
+#   cases the time channel appears to restart from zero (ish) in the middle of
+#   the run (unclear why this happens). We care about the latter case, since
+#   this likely indicated some machine/user error.
+#
+# Note also large negative spikes. For some reason some cytometers will set one
+# random event to have a zero time value in the middle of a run, which appears
+# as a gigantic "negative spike" in the time vs event index curve. We don't care
+# about these for now but they will end up getting removed later since they make
+# the data easier to compute.
 
 df_time_issues <- df_time_all %>%
   anti_join(df_low_event, by = "index") %>%
@@ -147,6 +184,11 @@ df_time_issues <- df_time_all %>%
   ) %>%
   select(-tdiff, -tdiff_norm, -time, -large_neg)
 
+#
+# 3) Place a gate at the boundary of each issue from above and filter out the
+#    files that don't have enough events in any gates.
+#
+
 df_gates <- df_time_issues %>%
   # only filter out issues that aren't random spikes (since these probably
   # aren't fatal)
@@ -168,11 +210,6 @@ df_gates <- df_time_issues %>%
   ) %>%
   ungroup() %>%
   select(-min_events)
-
-index_wonky <- df_gates %>%
-  filter(has_min_n == 0) %>%
-  pull(index) %>%
-  unique()
 
 df_time_diff_gated <- df_time_all %>%
   anti_join(df_low_event, by = "index") %>%
@@ -197,11 +234,35 @@ df_time_diff_clean <- df_time_diff_gated %>%
   ungroup() %>%
   select(-has_min, -has_min_n, -issue)
 
+#
+# 4) Identify regions where the time channel is "flat"
+#
+# In an ideal world, the events occurring in a flow cytometer would be Poissonic
+# and therefore the differences in time between events would be exponentially
+# distributed. This is not the case here (unfortunately) because a) some
+# cytometers are note precise enough to distinguish between two events and
+# therefore create a difference of 0 (not in the domain of an exp distribution)
+# b) some difference are negative (see (2) above) c) cytometers just aren't that
+# precise and deviations from Poissonc behavior may not indicate anything is
+# "wrong".
+#
+# Therefore, we hack this problem in a much simpler manner by recursively
+# regressing a step function to the differentiated time vs event index curve.
+# Most of the deviations we care about are caused by flow rate changes, which
+# will manifest as changes in slope or changes in the mean time difference
+# between events. We can measure this by fitting a step function to the
+# differences, where the step occurs at a flow rate change. Then we can place a
+# gate at all the step changes that are above a certain threshold.
+#
+# Then we can repeat the gating filtration process we did above where we remove
+# FCS files that don't have a gate with the minimum required event number
+# inside.
+
 df_step_gates <- df_time_diff_clean %>%
   filter(!is.na(gate_index)) %>%
   filter(!is.na(tdiff)) %>%
   group_by(index, gate_index) %>%
-  group_map(~ build_step_gates(.x, .y$index[[1]])) %>%
+  group_map(~ build_step_gates(.x, .y$index[[1]], THRESH, MIN_SIZE)) %>%
   bind_rows()
 
 df_step_gates_min <- df_step_gates %>%
@@ -212,13 +273,7 @@ df_step_gates_min <- df_step_gates %>%
   ) %>%
   group_by(index) %>%
   mutate(has_min_n = sum(has_min)) %>%
-  ungroup() %>%
-  select(-min_events)
-
-index_no_min <- df_step_gates_min %>%
-  filter(has_min_n == 0) %>%
-  pull(index) %>%
-  unique()
+  ungroup()
 
 df_top_gates <- df_step_gates_min %>%
   filter(has_min_n > 0) %>%
@@ -226,39 +281,65 @@ df_top_gates <- df_step_gates_min %>%
   filter(gate_length == max(gate_length)) %>%
   ungroup()
 
-df_time_all %>%
-  filter(index %in% index_wonky) %>%
-  ggplot(aes(event_index, time)) +
-  geom_point() +
-  facet_wrap(c("index"), scales = "free")
-
-df_time_all %>%
-  filter(index %in% index_no_min) %>%
-  group_by(index) %>%
-  ggplot(aes(event_index, time)) +
-  geom_point() +
-  facet_wrap(c("index"), scales = "free")
+#
+# 5) For all remaining FCS files, compute a linear regression and rank by R^2.
+#
+# This will allow us to manually inspect the "worst curves" that we may
+# potentially let through.
+#
 
 df_time_diff_gated <- df_time_all %>%
   right_join(df_top_gates, join_by(index, between(event_index, start, end))) %>%
   select(-start, -end)
 
-future::plan(future::multisession, workers = 4)
-
 df_time_r2 <- df_time_diff_gated %>%
   nest(data = c(event_index, time)) %>%
   mutate(r2 = map_dbl(data, ~ summary(lm(time ~ event_index, data = .x))$r.squared))
 
-# what to do with all these weird bendy cases :(
+#
+# 6) Export everything
+#
+
 df_time_r2 %>%
-  ggplot(aes(fct_reorder(factor(index), r2), r2)) +
-  geom_point() +
-  theme(axis.text.x = element_blank(), axis.minor.x = element_blank()) +
-  labs(x = NULL, y = "R^2")
+  select(index, r2) %>%
+  left_join(df_meta, by = "index") %>%
+  left_join(df_top_gates, by = "index") %>%
+  select(-has_min, -has_min_n) %>%
+  relocate(r2, .after = everything()) %>%
+  write_tsv("gates_valid_time.tsv.gz")
+
+df_low_event %>%
+  write_tsv("insufficient_events.tsv.gz")
+
+df_gates_has_issues <- df_gates %>%
+  filter(has_min_n == 0)
+
+df_gates_has_issues %>%
+  write_tsv("indices_with_issues.tsv.gz")
 
 df_time_all %>%
-  filter(index == 687) %>%
-  ## filter(between(event_index, 4950, 5050)) %>%
-  ggplot(aes(event_index, time)) +
+  filter(index %in% unique(df_gates_has_issues$index)) %>%
+  write_tsv("events_with_issues.tsv.gz")
+
+df_step_gates_nonlinear <- df_step_gates_min %>%
+  filter(has_min_n == 0)
+
+df_step_gates_nonlinear %>%
+  write_tsv("indices_nonlinear.tsv.gz")
+
+df_time_all %>%
+  filter(index %in% unique(df_step_gates_nonlinear$index)) %>%
+  write_tsv("events_nonlinear.tsv.gz")
+
+df_time_r2 %>%
+  arrange(r2) %>%
+  left_join(df_meta, by = "index") %>%
+  mutate(
+    i = row_number(),
+    om = sprintf("%s_%s", org, machine)
+  ) %>%
+  ggplot(aes(i, r2)) +
   geom_point() +
-  geom_smooth(method = lm)
+  labs(x = NULL, y = "R^2") +
+  facet_wrap(c("om"), ncol = 4)
+ggsave("r2_pareto_by_org.pdf", width = 8, height = 11)
