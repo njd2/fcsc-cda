@@ -56,6 +56,44 @@ rule run_qc:
         "scripts/R/run_qc.R"
 
 
+rule assess_time_channel:
+    input:
+        meta=rules.read_fcs_meta.output.header,
+        events=rules.read_fcs_events.output.time,
+    output:
+        valid="results/final/time/valid_gates.tsv.gz",
+        insufficient="results/final/time/insufficient_events.tsv.gz",
+        indices_nonlinear="results/final/time/indices_nonlinear.tsv.gz",
+        indices_issues="results/final/time/indices_with_issues.tsv.gz",
+        events_nonlinear="results/final/time/events_nonlinear.tsv.gz",
+        events_issues="results/final/time/events_with_issues.tsv.gz",
+        pareto="results/final/time/r2_pareto_by_org.pdf",
+    params:
+        thresh=50,
+        min_size=500,
+        min_event1=2e4,
+        min_event2=1.5e4,
+        min_event3=5e4
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/R/assess_time_channel.R"
+
+
+rule summarize_time_issues:
+    input:
+        meta=rules.read_fcs_meta.output.header,
+        nonlinear=rules.assess_time_channel.output.events_nonlinear,
+        issues=rules.assess_time_channel.output.events_issues,
+    output:
+        "results/final/time/issues_summary.html",
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/R/summarize_time_issues.Rmd"
+        
+        
+
 rule all:
     input:
-        rules.run_qc.output,
+        rules.summarize_time_issues.output,

@@ -1,0 +1,88 @@
+---
+title: "FCS files with time issues"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+
+knitr::opts_chunk$set(fig.width=8, fig.height=4, fig_caption=TRUE)
+
+read_events <- function(path) {
+  read_tsv(path, col_types = "iid")
+}
+
+make_plot <- function(i, df_meta, df_events) {
+  m <- df_meta %>%
+    filter(index == i) %>%
+    head(n = 1)
+  cat(sprintf("### %s - %s\n\n", m$org, m$machine))
+  cat(sprintf("SOP = %d\n\n", m$sop))
+  cat(sprintf("Experiment = %d\n\n", m$exp))
+  cat(sprintf("Rep = %d\n\n", m$rep))
+  cat(sprintf("Material = %s\n\n", m$material))
+  p <- df_events %>%
+    filter(index == i) %>%
+    ggplot(aes(event_index, time)) +
+    geom_point() +
+    labs(x = "Event", y = "Time Channel")
+  print(p)
+  cat("\n\n")
+}
+
+df_issues <- read_events(snakemake@input[["issues"]])
+
+df_nonlinear <- read_events(snakemake@input[["nonlinear"]])
+
+df_meta <- read_tsv(
+  snakemake@input[["meta"]],
+  col_types = cols(
+    machine = "c",
+    org = "c",
+    index = "i",
+    material = "c",
+    sop = "i",
+    exp = "i",
+    rep = "i",
+    .default = "-"
+  )
+)
+
+make_plots <- function(df) {
+  df$index %>%
+    unique() %>%
+    sort() %>%
+    walk(~ make_plot(.x, df_meta, df))
+}
+
+```
+
+The following are the time channels of the FCS files with detected issues 
+(further elaborated below).
+
+In each of these cases, the minimum nunmber of required events was not
+achieved after trying to gate around these issues.
+
+# Files with anomalies
+
+These files have one or both of these issues:
+
+* (large) non-monotonicity: the time channel reset to (near) zero in the middle
+  of the run
+
+* gaps: the time channel has a large pause in the middle, which usually
+  indicates a clog or bubble
+
+```{r, echo = FALSE, results = "asis"}
+make_plots(df_issues)
+```
+
+# Files with non-linearity
+
+These files have large deviations in flow rate somewhere in the middle.
+
+```{r, echo = FALSE, results = "asis"}
+make_plots(df_nonlinear)
+```
