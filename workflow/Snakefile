@@ -40,22 +40,6 @@ rule read_fcs_events:
         "scripts/R/read_fcs_events.R"
 
 
-rule run_qc:
-    input:
-        combos="static/wg2_combinations.tsv",
-        event=rules.read_fcs_events.output.summary,
-        meta=rules.read_fcs_meta.output.header,
-        params=rules.read_fcs_meta.output.params,
-        linkage=rules.format_linkage.output.table,
-    output:
-        errors="results/final/qc/errors.pdf",
-        missing="results/final/qc/missing_channels.tsv",
-    conda:
-        "envs/flowcore.yml"
-    script:
-        "scripts/R/run_qc.R"
-
-
 rule assess_time_channel:
     input:
         meta=rules.read_fcs_meta.output.header,
@@ -93,7 +77,24 @@ rule summarize_time_issues:
         "scripts/R/summarize_time_issues.Rmd"
         
         
+rule run_qc:
+    input:
+        combos="static/wg2_combinations.tsv",
+        event=rules.read_fcs_events.output.summary,
+        meta=rules.read_fcs_meta.output.header,
+        params=rules.read_fcs_meta.output.params,
+        linkage=rules.format_linkage.output.table,
+        insufficient=rules.assess_time_channel.output.insufficient,
+        issues=rules.assess_time_channel.output.indices_issues,
+        nonlinear=rules.assess_time_channel.output.indices_nonlinear,
+    output:
+        errors="results/final/qc/errors.pdf",
+        missing="results/final/qc/missing_channels.tsv",
+    conda:
+        "envs/flowcore.yml"
+    script:
+        "scripts/R/run_qc.R"
 
 rule all:
     input:
-        rules.summarize_time_issues.output,
+        rules.run_qc.output,

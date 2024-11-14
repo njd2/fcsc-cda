@@ -79,9 +79,9 @@ SSBS	NorthernL	SSC-A	fsc
 UDel	FusionI	SSC-A	fsc
 UDel	FusionII	SSC-A	fsc
 WRAIR	Fortessa	SSC-A	fsc
-CellBio	CellStream	UCI_FSC - 456/51 - D2	fsc
-LMNXSEA	CellStream-1	UCI_FSC - 456/51 - D2	fsc
-LMNXSEA	CellStream-2	UCI_FSC - 456/51 - D2	fsc
+CellBio	CellStream	NA	fsc
+LMNXSEA	CellStream-1	NA	fsc
+LMNXSEA	CellStream-2	NA	fsc
 LMNXSEA	ImageStreamX-1	NA	fsc
 AgilentSC	Quanteon	SSC-A	ssc
 AgilentSD	Penteon	SSC-A	ssc
@@ -121,7 +121,7 @@ SSBS	NorthernL	SSC-A	ssc
 UDel	FusionI	SSC-A	ssc
 UDel	FusionII	SSC-A	ssc
 WRAIR	Fortessa	SSC-A	ssc
-CellBio	CellStream	UCI_SSC - 773/56 - A1	ssc
-LMNXSEA	CellStream-1	UCI_SSC - 773/56 - A1	ssc
-LMNXSEA	CellStream-2	UCI_SSC - 773/56 - A1	ssc
+CellBio	CellStream	NA	ssc
+LMNXSEA	CellStream-1	NA	ssc
+LMNXSEA	CellStream-2	NA	ssc
 LMNXSEA	ImageStreamX-1	NA	ssc
