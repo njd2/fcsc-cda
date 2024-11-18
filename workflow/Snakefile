@@ -15,13 +15,26 @@ rule read_fcs_meta:
     input:
         "resources/fcs_wg2",
     output:
-        meta="results/intermediate/meta/fcs_header.tsv.gz",
+        meta="results/intermediate/meta/fcs_meta.tsv.gz",
         params="results/intermediate/meta/fcs_params.tsv.gz",
         warnings="results/intermediate/meta/warnings.tsv.gz",
     conda:
         "envs/fcsparser.yml"
     script:
         "scripts/python/read_metadata.py"
+
+
+rule read_fcs_time_channels:
+    input:
+        channels="static/time_fsc_ssc_mapping.tsv",
+        meta=rules.read_fcs_meta.output.meta,
+    output:
+        "results/intermediate/time_channels.tsv.gz",
+    conda:
+        "envs/fcsparser.yml"
+    threads: 16
+    script:
+        "scripts/python/read_time_channel.py"
 
 
 # rule read_fcs_events:
@@ -98,4 +111,5 @@ rule read_fcs_meta:
 rule all:
     input:
         rules.read_fcs_meta.output,
+        rules.format_linkage.output,
         # rules.run_qc.output,

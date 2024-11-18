@@ -96,6 +96,10 @@ df_channel <- read.xlsx(channel_file) %>%
         TRUE ~ machine_name
       ),
       # or here
+      org == "NIBSC" & str_starts(machine, "CantoII") & machine_name == "PerCP-Cy5.5" ~ "PerCP-Cy5-5",
+      # or here
+      org == "UDel" & str_starts(machine, "Fusion") & machine_name == "PerCP-Cy5.5" ~ "PerCP-Cy5-5",
+      # or here
       org == "BDSJ" ~ case_when(
         machine_name == "488/527/32" ~ "FITC",
         machine_name == "488/586/42" ~ "PE",

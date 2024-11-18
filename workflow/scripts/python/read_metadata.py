@@ -60,7 +60,7 @@ class FCSMeta(NamedTuple):
     total: int
     group: str
     om: str
-    filename: str | None
+    filepath: Path
     timestep: float | None
     version: float | None
     btime: str | None
@@ -148,8 +148,8 @@ def parse_params(meta: dict[str, str]) -> list[Param]:
 def parse_total_time(
     meta: dict[str, str]
 ) -> tuple[str | None, str | None, float | None]:
-    btime = lookup_map(dt.time.fromisoformat, "$BTIME", meta)
-    etime = lookup_map(dt.time.fromisoformat, "$ETIME", meta)
+    btime = lookup_map(dt.time.fromisoformat, "$BTIM", meta)
+    etime = lookup_map(dt.time.fromisoformat, "$ETIM", meta)
     if btime is not None and etime is not None:
         offset = dt.timedelta(days=0 if btime < etime else 1)
         begin = dt.datetime.combine(dt.date.today(), btime)
@@ -200,12 +200,13 @@ def parse_metadata(idx: int, p: Path) -> FCSMeta:
     org = s[2]
     machine = s[3]
     material = s[4]
-    sop = int(s[5][4])
+    sop = int(s[5][5])
     exp = int(s[6][1])
     group = parse_group(sop, exp, material)
     om = f"{org}_{machine}"
     return FCSMeta(
         file_index=idx,
+        filepath=p,
         org=org,
         machine=machine,
         om=om,
@@ -213,11 +214,10 @@ def parse_metadata(idx: int, p: Path) -> FCSMeta:
         material=material,
         sop=sop,
         exp=exp,
-        rep=int(s[7]),
-        filename=p.name,
+        rep=int(s[8]),
+        version=float(meta["__header__"]["FCS format"].decode()[3:]),
         total=int(meta["$TOT"]),
         timestep=lookup_map(float, "$TIMESTEP", meta),
-        version=lookup_map(float, "$FCSVersion", meta),
         btime=btime,
         etime=etime,
         total_time=total_time,

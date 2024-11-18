@@ -5,8 +5,10 @@ channels:
 dependencies:
   - python=3.12.6
   - fcsparser
+  # dev
   - black
   - flake8
   - snakefmt
   - ipython
   - mypy
+  - pandas-stubs
