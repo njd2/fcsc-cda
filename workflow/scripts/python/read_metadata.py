@@ -37,7 +37,8 @@ MONTHMAP = {
 class Param(NamedTuple):
     param_index: int  # the 'n' in PnX
     shortname: str  # PnN
-    amp_type: str  # PnE
+    log_decades: str  # PnE (field 1)
+    log_zero: str  # PnE (field 2)
     maxrange: float | None  # PnR
     longname: str | None  # PnS
     filtername: str | None  # PnF
@@ -131,7 +132,8 @@ def parse_params(meta: dict[str, str]) -> list[Param]:
             param_index=g[0],
             shortname=(xs := {k: v for _, k, v in g[1]})["N"].strip(),
             maxrange=int(xs["R"]),
-            amp_type=xs["E"],
+            log_decades=float((e := xs["E"].split(","))[0]),
+            log_zero=float(e[1]),
             longname=lookup_maybe("S", xs),
             filtername=lookup_maybe("F", xs),
             gain=lookup_map(float, "G", xs),
@@ -168,19 +170,16 @@ def parse_group(sop: int, exp: int, material: str) -> str:
     if sop == 1:
         return "SOP 1"
     elif sop == 2:
-        if sop == 4:
-            n = "3/4"
-        else:
-            n = str(sop)
+        n = "3/4" if exp == 4 else str(exp)
         return f"SOP 2: Matrix {n}"
     else:
         if "fmo" in material:
             s = "Test FMO"
         elif exp == 1:
             s = "Test Pheno"
-        elif exp == 1:
+        elif exp == 2:
             s = "Test Count"
-        elif exp == 1:
+        elif exp == 3:
             s = "QC Count"
         else:
             s = "QC Pheno"

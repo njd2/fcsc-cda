@@ -1,5 +1,5 @@
 [flake8]
 # assume black will handle line length appropriately
-extend-ignore = E501
+extend-ignore = E501,E203
 # pretend "snakemake" variable is already defined
 builtins = snakemake

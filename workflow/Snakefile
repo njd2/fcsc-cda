@@ -1,10 +1,23 @@
+from pathlib import Path
+
+src = Path("resources")
+
+res_int = Path("results/intermediate")
+res_final = Path("results/final")
+
+res_linkage = res_int / "linkage"
+res_meta = res_int / "meta"
+res_meta_issues = res_meta / "issues"
+res_time_issues = res_int / "time"
+
+
 rule format_linkage:
     input:
-        "resources/wg2_linkage.xlsx",
+        src / "wg2_linkage.xlsx",
     output:
-        table="results/intermediate/linkage/wg2_linkage.tsv",
-        ex_em="results/intermediate/linkage/wg2_ex_em.pdf",
-        defined="results/intermediate/linkage/wg2_defined_channels.pdf",
+        table=res_linkage / "wg2_linkage.tsv",
+        ex_em=res_linkage / "wg2_ex_em.pdf",
+        defined=res_linkage / "wg2_defined_channels.pdf",
     conda:
         "envs/xlsx.yml"
     script:
@@ -13,28 +26,76 @@ rule format_linkage:
 
 rule read_fcs_meta:
     input:
-        "resources/fcs_wg2",
+        src / "fcs_wg2",
     output:
-        meta="results/intermediate/meta/fcs_meta.tsv.gz",
-        params="results/intermediate/meta/fcs_params.tsv.gz",
-        warnings="results/intermediate/meta/warnings.tsv.gz",
+        meta=res_meta / "fcs_meta.tsv.gz",
+        params=res_meta / "fcs_params.tsv.gz",
+        warnings=res_meta / "warnings.tsv.gz",
     conda:
         "envs/fcsparser.yml"
     script:
         "scripts/python/read_metadata.py"
 
 
-rule read_fcs_time_channels:
+# rule read_fcs_time_channels:
+#     input:
+#         channels="static/time_fsc_ssc_mapping.tsv",
+#         meta=rules.read_fcs_meta.output.meta,
+#     output:
+#         "results/intermediate/time_channels.tsv.gz",
+#     conda:
+#         "envs/fcsparser.yml"
+#     threads: 16
+#     script:
+#         "scripts/python/read_time_channel.py"
+
+
+rule find_metadata_issues:
+    input:
+        combos="static/wg2_combinations.tsv",
+        tfs="static/time_fsc_ssc_mapping.tsv",
+        linkage=rules.format_linkage.output.table,
+        meta=rules.read_fcs_meta.output.meta,
+        params=rules.read_fcs_meta.output.params,
+    output:
+        voltgain=res_meta_issues / "voltage_gain.tsv.gz",
+        channels=res_meta_issues / "missing_channels.tsv.gz",
+        issues=res_meta_issues / "all_issues.tsv.gz",
+        clean=res_meta_issues / "clean.tsv.gz",
+    params:
+        min_event1=2e4,
+        min_event2=1.5e4,
+        min_event3=5e4,
+        vdiff_limit=0.01,
+        gdiff_limit=0.01,
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/R/find_metadata_issues.R"
+
+
+rule find_time_issues:
     input:
         channels="static/time_fsc_ssc_mapping.tsv",
-        meta=rules.read_fcs_meta.output.meta,
+        clean_meta=rules.find_metadata_issues.output.clean,
     output:
-        "results/intermediate/time_channels.tsv.gz",
+        anomaly=res_time_issues / "anomaly.tsv.gz",
+        flat=res_time_issues / "flat.tsv.gz",
+        top=res_time_issues / "top.tsv.gz",
+    threads: 20
+    params:
+        min_event1=2e4,
+        min_event2=1.5e4,
+        min_event3=5e4,
+        spike_limit=1000,
+        gap_limit=0.05,
+        non_mono_limit=100,
+        rate_thresh=50,
+        min_size=500,
     conda:
         "envs/fcsparser.yml"
-    threads: 16
     script:
-        "scripts/python/read_time_channel.py"
+        "scripts/python/find_time_issues.py"
 
 
 # rule read_fcs_events:
@@ -88,8 +149,8 @@ rule read_fcs_time_channels:
 #         "envs/tidyverse.yml"
 #     script:
 #         "scripts/R/summarize_time_issues.Rmd"
-        
-        
+
+
 # rule run_qc:
 #     input:
 #         combos="static/wg2_combinations.tsv",
@@ -108,8 +169,11 @@ rule read_fcs_time_channels:
 #     script:
 #         "scripts/R/run_qc.R"
 
+
 rule all:
     input:
-        rules.read_fcs_meta.output,
-        rules.format_linkage.output,
+        # rules.find_metadata_issues.output,
+        rules.find_time_issues.output,
+        # rules.read_fcs_meta.output,
+        # rules.format_linkage.output,
         # rules.run_qc.output,
