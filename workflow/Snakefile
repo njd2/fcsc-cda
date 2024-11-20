@@ -82,6 +82,7 @@ rule find_time_issues:
         anomaly=res_time_issues / "anomaly.tsv.gz",
         flat=res_time_issues / "flat.tsv.gz",
         top=res_time_issues / "top.tsv.gz",
+        events=res_time_issues / "events.tsv.gz",
     threads: 20
     params:
         min_event1=2e4,

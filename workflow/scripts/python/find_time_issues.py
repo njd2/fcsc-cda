@@ -1,3 +1,4 @@
+import gzip
 import math
 import warnings
 import numpy.typing as npt
@@ -6,7 +7,7 @@ import pandas as pd
 import fcsparser as fp  # type: ignore
 import scipy.optimize as spo  # type: ignore
 from pathlib import Path
-from typing import NamedTuple, Any
+from typing import NamedTuple, Any, TextIO
 from dataclasses import dataclass, asdict
 from multiprocessing import Pool
 
@@ -52,10 +53,18 @@ class RunConfig(NamedTuple):
     sop: int
 
 
-class RunResult(NamedTuple):
-    file_index: int
+class GateResult(NamedTuple):
     anomaly_gates: list[AnomalyGate]
     flat_gates: list[Gate]
+
+
+class ErrorResult(NamedTuple):
+    time: "pd.Series[float]"
+
+
+class RunResult(NamedTuple):
+    file_index: int
+    result: GateResult | ErrorResult
 
 
 def get_min_events(p: Params, sop: int) -> int:
@@ -185,7 +194,7 @@ def get_all_gates(c: RunConfig) -> RunResult:
     valid_ano_gates = [g for g in ano_gates if g.length > min_events]
 
     if len(valid_ano_gates) == 0:
-        return RunResult(c.file_index, [], [])
+        res: GateResult | ErrorResult = ErrorResult(t)
     else:
         t_clean = t[anomalies == 0]
         tdiff_clean = t_clean - t_clean.shift(1)
@@ -195,14 +204,13 @@ def get_all_gates(c: RunConfig) -> RunResult:
             for fg in get_flat_gates(c.params, ag.start, ag.end, tdiff_clean)
             if fg.length > min_events
         ]
-        return RunResult(
-            c.file_index,
-            valid_ano_gates,
-            sorted(
-                flat_gates,
-                key=lambda g: g.length,
-            ),
-        )
+        if len(flat_gates) == 0:
+            res = ErrorResult(t)
+        else:
+            res = GateResult(
+                valid_ano_gates, sorted(flat_gates, key=lambda g: g.length)
+            )
+    return RunResult(c.file_index, res)
 
 
 def main(smk: Any) -> None:
@@ -225,6 +233,7 @@ def main(smk: Any) -> None:
     anomaly_out = Path(smk.output["anomaly"])
     flat_out = Path(smk.output["flat"])
     top_out = Path(smk.output["top"])
+    event_out = Path(smk.output["events"])
 
     channels = read_time_channel_mapping(channel_in)
 
@@ -240,39 +249,29 @@ def main(smk: Any) -> None:
     with Pool(smk.threads) as pl:
         gate_results = pl.map(get_all_gates, runs)
 
-    anomaly_gates = [
-        (r.file_index, *asdict(g).values())
-        for r in gate_results
-        for g in r.anomaly_gates
-    ]
+    with (
+        gzip.open(anomaly_out, "wt") as ao,
+        gzip.open(flat_out, "wt") as fo,
+        gzip.open(top_out, "wt") as to,
+        gzip.open(event_out, "wt") as eo,
+    ):
+        for r in gate_results:
+            fi = str(r.file_index)
+            res = r.result
 
-    pd.DataFrame(anomaly_gates, columns=["file_index", "start", "end", "issue"]).to_csv(
-        anomaly_out,
-        sep="\t",
-        index=False,
-    )
+            def write_tsv_line(b: TextIO, xs: list[Any]) -> None:
+                b.write("\t".join([fi, *[str(x) for x in xs]]) + "\n")
 
-    flat_gates = [
-        (r.file_index, *asdict(g).values()) for r in gate_results for g in r.flat_gates
-    ]
-
-    pd.DataFrame(flat_gates, columns=["file_index", "start", "end"]).to_csv(
-        flat_out,
-        sep="\t",
-        index=False,
-    )
-
-    top_gates = [
-        (r.file_index, *asdict(gs[-1]).values())
-        for r in gate_results
-        if len(gs := r.flat_gates) > 0
-    ]
-
-    pd.DataFrame(top_gates, columns=["file_index", "start", "end"]).to_csv(
-        top_out,
-        sep="\t",
-        index=False,
-    )
+            if isinstance(res, GateResult):
+                for ag in res.anomaly_gates:
+                    write_tsv_line(ao, [ag.start, ag.end, ag.anomaly])
+                for fg in res.flat_gates:
+                    write_tsv_line(fo, [fg.start, fg.end])
+                g0 = res.flat_gates[-1]
+                write_tsv_line(to, [g0.start, g0.end])
+            else:
+                for ei, t in res.time.items():
+                    write_tsv_line(eo, [ei, t])
 
 
 main(snakemake)  # type: ignore
