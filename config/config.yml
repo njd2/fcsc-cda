@@ -1,0 +1,15 @@
+min_events:
+  sop1: 20000
+  sop2: 15000
+  sop3: 50000
+
+detector_limits:
+  voltage: 0.01
+  gain: 0.01
+
+time_limits:
+  spike_limit: 1000
+  gap_limit: 0.05
+  non_mono_limit: 100
+  rate_thresh: 50
+  min_size: 500
