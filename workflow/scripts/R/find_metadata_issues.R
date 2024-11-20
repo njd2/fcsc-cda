@@ -198,7 +198,8 @@ df_issues <- df_combos %>%
   left_join(df_file_channels_short, by = "file_index") %>%
   group_by(org, machine) %>%
   ungroup() %>%
-  relocate(file_index, org, machine, material, sop, exp, rep, om, group)
+  relocate(file_index, org, machine, material, sop, exp, rep, om, group) %>%
+  arrange(file_index)
 
 df_issues %>%
   write_tsv(snakemake@output[["issues"]])

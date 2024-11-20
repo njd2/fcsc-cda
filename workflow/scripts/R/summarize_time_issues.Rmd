@@ -7,41 +7,26 @@ output:
 
 ```{r, include=FALSE}
 library(tidyverse)
+library(scattermore)
 
 knitr::opts_chunk$set(fig.width=8, fig.height=4, fig_caption=TRUE)
 
-read_events <- function(path) {
-  read_tsv(path, col_types = "iid")
-}
+anomaly_indices <- unique(read_tsv(snakemake@input[["anomaly"]], col_types = "i---")[[1]])
 
-make_plot <- function(i, df_meta, df_events) {
-  m <- df_meta %>%
-    filter(index == i) %>%
-    head(n = 1)
-  cat(sprintf("### %s - %s\n\n", m$org, m$machine))
-  cat(sprintf("SOP = %d\n\n", m$sop))
-  cat(sprintf("Experiment = %d\n\n", m$exp))
-  cat(sprintf("Rep = %d\n\n", m$rep))
-  cat(sprintf("Material = %s\n\n", m$material))
-  p <- df_events %>%
-    filter(index == i) %>%
-    ggplot(aes(event_index, time)) +
-    geom_point() +
-    labs(x = "Event", y = "Time Channel")
-  print(p)
-  cat("\n\n")
-}
-
-df_issues <- read_events(snakemake@input[["issues"]])
-
-df_nonlinear <- read_events(snakemake@input[["nonlinear"]])
+# ASSUME these are sorted by file/event index
+df_events <- read_tsv(
+  snakemake@input[["events"]],
+  col_types = "iid",
+  col_names = c("file_index", "event_index", "time")
+) %>%
+  mutate(passed_anomaly = file_index %in% anomaly_indices)
 
 df_meta <- read_tsv(
   snakemake@input[["meta"]],
   col_types = cols(
     machine = "c",
     org = "c",
-    index = "i",
+    file_index = "i",
     material = "c",
     sop = "i",
     exp = "i",
@@ -50,11 +35,23 @@ df_meta <- read_tsv(
   )
 )
 
-make_plots <- function(df) {
-  df$index %>%
-    unique() %>%
-    sort() %>%
-    walk(~ make_plot(.x, df_meta, df))
+make_plot <- function(df_events, key) {
+  i <- key$file_index
+  m <- df_meta %>%
+    filter(file_index == i) %>%
+    head(n = 1)
+  cat(sprintf("### %s - %s\n\n", m$org, m$machine))
+  cat(sprintf("File Index = %d\n\n", i))
+  cat(sprintf("SOP = %d\n\n", m$sop))
+  cat(sprintf("Experiment = %d\n\n", m$exp))
+  cat(sprintf("Rep = %d\n\n", m$rep))
+  cat(sprintf("Material = %s\n\n", m$material))
+  p <- df_events %>%
+    ggplot(aes(event_index, time)) +
+    geom_scattermore(pointsize=2) +
+    labs(x = "Event", y = "Time Channel")
+  print(p)
+  cat("\n\n")
 }
 
 ```
@@ -76,7 +73,10 @@ These files have one or both of these issues:
   indicates a clog or bubble
 
 ```{r, echo = FALSE, results = "asis"}
-make_plots(df_issues)
+df_events %>%
+  filter(!passed_anomaly) %>%
+  group_by(file_index) %>%
+  group_walk(make_plot)
 ```
 
 # Files with non-linearity
@@ -84,5 +84,8 @@ make_plots(df_issues)
 These files have large deviations in flow rate somewhere in the middle.
 
 ```{r, echo = FALSE, results = "asis"}
-make_plots(df_nonlinear)
+df_events %>%
+  filter(passed_anomaly) %>%
+  group_by(file_index) %>%
+  group_walk(make_plot)
 ```

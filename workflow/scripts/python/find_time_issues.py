@@ -8,7 +8,7 @@ import fcsparser as fp  # type: ignore
 import scipy.optimize as spo  # type: ignore
 from pathlib import Path
 from typing import NamedTuple, Any, TextIO
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from multiprocessing import Pool
 
 ChannelMap = dict[tuple[str, str], str]
@@ -60,6 +60,7 @@ class GateResult(NamedTuple):
 
 class ErrorResult(NamedTuple):
     time: "pd.Series[float]"
+    gates: list[AnomalyGate]
 
 
 class RunResult(NamedTuple):
@@ -191,10 +192,10 @@ def get_all_gates(c: RunConfig) -> RunResult:
     anomalies = get_anomalies(c.params, t)
 
     ano_gates = get_anomaly_gates(anomalies)
-    valid_ano_gates = [g for g in ano_gates if g.length > min_events]
+    valid_ano_gates = [g for g in ano_gates if g.length >= min_events]
 
     if len(valid_ano_gates) == 0:
-        res: GateResult | ErrorResult = ErrorResult(t)
+        res: GateResult | ErrorResult = ErrorResult(t, [])
     else:
         t_clean = t[anomalies == 0]
         tdiff_clean = t_clean - t_clean.shift(1)
@@ -202,10 +203,10 @@ def get_all_gates(c: RunConfig) -> RunResult:
             fg
             for ag in valid_ano_gates
             for fg in get_flat_gates(c.params, ag.start, ag.end, tdiff_clean)
-            if fg.length > min_events
+            if fg.length >= min_events
         ]
         if len(flat_gates) == 0:
-            res = ErrorResult(t)
+            res = ErrorResult(t, valid_ano_gates)
         else:
             res = GateResult(
                 valid_ano_gates, sorted(flat_gates, key=lambda g: g.length)
@@ -267,9 +268,12 @@ def main(smk: Any) -> None:
                     write_tsv_line(ao, [ag.start, ag.end, ag.anomaly])
                 for fg in res.flat_gates:
                     write_tsv_line(fo, [fg.start, fg.end])
+                # last gate in the flat series is the longest, so use that one
                 g0 = res.flat_gates[-1]
                 write_tsv_line(to, [g0.start, g0.end])
             else:
+                for ag in res.gates:
+                    write_tsv_line(ao, [ag.start, ag.end, ag.anomaly])
                 for ei, t in res.time.items():
                     write_tsv_line(eo, [ei, t])
 

@@ -5,3 +5,4 @@ channels:
 dependencies:
   - r-tidyverse
   - r-furrr
+  - r-scattermore # handy for plotting lots of points at once
