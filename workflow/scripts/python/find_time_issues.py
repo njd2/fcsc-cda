@@ -217,17 +217,19 @@ def get_all_gates(c: RunConfig) -> RunResult:
 
 def main(smk: Any) -> None:
     sp = smk.params
+    me = sp["min_events"]
+    tl = sp["time_limits"]
     params = Params(
         min_events=MinEvents(
-            sop1=sp["min_event1"],
-            sop2=sp["min_event2"],
-            sop3=sp["min_event3"],
+            sop1=me["sop1"],
+            sop2=me["sop2"],
+            sop3=me["sop3"],
         ),
-        spike_limit=sp["spike_limit"],
-        gap_limit=sp["gap_limit"],
-        non_mono_limit=sp["non_mono_limit"],
-        rate_thresh=math.log10(100 / sp["rate_thresh"]),
-        min_size=sp["min_size"],
+        spike_limit=tl["spike_limit"],
+        gap_limit=tl["gap_limit"],
+        non_mono_limit=tl["non_mono_limit"],
+        rate_thresh=math.log10(100 / tl["rate_thresh"]),
+        min_size=tl["min_size"],
     )
     channel_in = Path(smk.input["channels"])
     meta_in = Path(smk.input["meta"])

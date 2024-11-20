@@ -63,11 +63,8 @@ rule find_metadata_issues:
         issues=res_meta_issues / "all_issues.tsv.gz",
         clean=res_meta_issues / "clean.tsv.gz",
     params:
-        min_event1=2e4,
-        min_event2=1.5e4,
-        min_event3=5e4,
-        vdiff_limit=0.01,
-        gdiff_limit=0.01,
+        min_events=config["min_events"],
+        detector_limits=config["detector_limits"],
     conda:
         "envs/tidyverse.yml"
     script:
@@ -85,14 +82,8 @@ rule find_time_issues:
         events=res_time_issues / "events.tsv.gz",
     threads: 20
     params:
-        min_event1=2e4,
-        min_event2=1.5e4,
-        min_event3=5e4,
-        spike_limit=1000,
-        gap_limit=0.05,
-        non_mono_limit=100,
-        rate_thresh=50,
-        min_size=500,
+        min_events=config["min_events"],
+        time_limits=config["time_limits"],
     conda:
         "envs/fcsparser.yml"
     script:
@@ -109,33 +100,26 @@ rule summarize_time_issues:
     conda:
         "envs/tidyverse.yml"
     script:
-        "scripts/R/summarize_time_issues.Rmd"
+        "scripts/Rmd/summarize_time_issues.Rmd"
 
 
-# rule run_qc:
-#     input:
-#         combos="static/wg2_combinations.tsv",
-#         event=rules.read_fcs_events.output.summary,
-#         meta=rules.read_fcs_meta.output.header,
-#         params=rules.read_fcs_meta.output.params,
-#         linkage=rules.format_linkage.output.table,
-#         insufficient=rules.assess_time_channel.output.insufficient,
-#         issues=rules.assess_time_channel.output.indices_issues,
-#         nonlinear=rules.assess_time_channel.output.indices_nonlinear,
-#     output:
-#         errors="results/final/qc/errors.pdf",
-#         missing="results/final/qc/missing_channels.tsv",
-#     conda:
-#         "envs/flowcore.yml"
-#     script:
-#         "scripts/R/run_qc.R"
+rule summarize_clean_up:
+    input:
+        issues=rules.find_metadata_issues.output.issues,
+        events=rules.find_time_issues.output.events,
+        anomaly=rules.find_time_issues.output.anomaly,
+    output:
+        res_final / "clean_up_summary.html",
+    params:
+        min_events=config["min_events"],
+        detector_limits=config["detector_limits"],
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/Rmd/summarize_clean_up.Rmd"
 
 
 rule all:
     input:
-        # rules.find_metadata_issues.output,
-        rules.find_time_issues.output,
         rules.summarize_time_issues.output,
-        # rules.read_fcs_meta.output,
-        # rules.format_linkage.output,
-        # rules.run_qc.output,
+        rules.summarize_clean_up.output,

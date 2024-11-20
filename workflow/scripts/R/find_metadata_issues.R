@@ -1,10 +1,12 @@
 library(tidyverse)
 
-MIN_EVENT_SOP1 <- 2e4
-MIN_EVENT_SOP2 <- 1.5e4
-MIN_EVENT_SOP3 <- 5e4
-VDIFF_LIMIT <- 0.01
-GDIFF_LIMIT <- 0.01
+ps <- snakemake@params
+
+MIN_EVENT_SOP1 <- ps[["min_events"]][["sop1"]]
+MIN_EVENT_SOP2 <- ps[["min_events"]][["sop2"]]
+MIN_EVENT_SOP3 <- ps[["min_events"]][["sop3"]]
+VDIFF_LIMIT <- ps[["detector_limits"]][["voltage"]]
+GDIFF_LIMIT <- ps[["detector_limits"]][["gain"]]
 
 ensure_empty <- function(df, msg) {
   if (nrow(df) > 0) {
@@ -16,7 +18,26 @@ ensure_empty <- function(df, msg) {
 df_combos <- read_tsv(
   snakemake@input[["combos"]],
   col_types = "ciiicc"
-)
+) %>%
+  mutate(
+    om = sprintf("%s_%s", org, machine),
+    group = case_when(
+      sop == 1 ~ "SOP 1",
+      sop == 2 ~ case_when(
+        exp == 1 ~ "SOP 2: Matrix 1",
+        exp == 2 ~ "SOP 2: Matrix 2",
+        exp == 3 ~ "SOP 2: Matrix 3",
+        exp == 4 ~ "SOP 2: Matrix 3/4"
+      ),
+      sop == 3 ~ case_when(
+        str_detect(material, "fmo") ~ "SOP 3 - Test FMO",
+        exp == 1 ~ "SOP 3: Test Pheno",
+        exp == 2 ~ "SOP 3: Test Count",
+        exp == 3 ~ "SOP 3: QC Count",
+        exp == 4 ~ "SOP 3: QC Pheno"
+      )
+    )
+  )
 
 df_meta <- read_tsv(
   snakemake@input[["meta"]],
@@ -35,7 +56,8 @@ df_meta <- read_tsv(
     run_date = "D",
     .default = "c"
   )
-)
+) %>%
+  select(-group, -om)
 
 df_params <- read_tsv(
   snakemake@input[["params"]],
@@ -83,7 +105,7 @@ df_params_std %>%
 #
 
 df_sop1_voltgain <- df_params_std %>%
-  select(-org, -machine, -group, -om) %>%
+  select(-org, -machine) %>%
   left_join(df_meta, by = "file_index") %>%
   filter(sop == 1) %>%
   filter(!std_name %in% c("fsc", "ssc", "time")) %>%
@@ -109,7 +131,7 @@ df_sop1_voltgain %>%
 
 df_voltgain_diff <- df_params_std %>%
   filter(!std_name %in% c("fsc", "ssc", "time")) %>%
-  select(-org, -machine, -group, -om) %>%
+  select(-org, -machine) %>%
   left_join(df_meta, by = "file_index") %>%
   filter(sop != 1) %>%
   left_join(df_sop1_voltgain, by = c("org", "machine", "std_name")) %>%
@@ -161,7 +183,7 @@ df_file_channels <- df_params_std %>%
   right_join(select(df_meta, file_index), by = "file_index") %>%
   mutate(
     missing_time = is.na(time),
-    missing_colors = if_any(c(v450, v500, fsc, fitc, pc55, pe, pc7, apc, ac7), is.na),
+    missing_colors = if_any(c(v450, v500, fitc, pc55, pe, pc7, apc, ac7), is.na),
     missing_scatter = if_any(c(fsc, ssc), is.na)
   )
 

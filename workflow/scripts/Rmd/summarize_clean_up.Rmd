@@ -1,0 +1,137 @@
+---
+title: "FCS Clean-up summary"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+
+knitr::opts_chunk$set(fig.width=13, fig.height=7, fig_caption=TRUE)
+
+ps <- snakemake@params
+
+MIN_EVENT_SOP1 <- ps[["min_events"]][["sop1"]]
+MIN_EVENT_SOP2 <- ps[["min_events"]][["sop2"]]
+MIN_EVENT_SOP3 <- ps[["min_events"]][["sop3"]]
+VDIFF_LIMIT <- ps[["detector_limits"]][["voltage"]]
+GDIFF_LIMIT <- ps[["detector_limits"]][["gain"]]
+
+df_meta_issues <- read_tsv(
+  snakemake@input[["issues"]],
+  col_types = cols(
+    file_index = "i",
+    om = "c",
+    group = "c",
+    total = "i",
+    has_voltage_variation = "l",
+    has_gain_variation =  "l",
+    percent_complete = "d",
+    has_multi_serial = "l",
+    has_multi_cytometer = "l",
+    has_multi_system = "l",
+    missing_time = "l",
+    missing_colors = "l",
+    missing_scatter = "l",
+    .default = "-"
+  )
+)
+
+anomaly_idx <- unique(read_tsv(snakemake@input[["anomaly"]], col_types = "i---")[[1]])
+
+bad_time_idx <- unique(read_tsv(snakemake@input[["events"]], col_types = "i--")[[1]])
+
+df_all_issues <- df_meta_issues %>%
+  mutate(
+    missing_file = is.na(file_index),
+    has_time_anomaly = file_index %in% bad_time_idx & !(file_index %in% anomaly_idx),
+    has_time_nonlinear = file_index %in% bad_time_idx & file_index %in% anomaly_idx
+  ) %>%
+  mutate(
+    metadata_error = case_when(
+      missing_file ~ "1 missing file",
+      has_multi_serial | has_multi_cytometer | has_multi_system ~ "2 muliple systems",
+      percent_complete < 100 ~ "3 too few events",
+      missing_time ~ "4 missing time channel" ,
+      missing_colors ~ "5 missing color channel",
+      has_voltage_variation | has_gain_variation ~ "6 voltage/gain variation",
+      TRUE ~ "7 no metadata error"
+    ) %>%
+      factor() %>%
+      fct_relabel(~ str_sub(.x, 3)),
+    time_error = case_when(
+      metadata_error != "no metadata error" ~ "1 metadata error",
+      has_time_anomaly ~ "2 has time anomaly",
+      has_time_nonlinear ~ "3 has uneven flow rate",
+      TRUE ~ "4 no time error"
+    ) %>%
+      factor() %>%
+      fct_relabel(~ str_sub(.x, 3)),
+    metadata_alpha = if_else(metadata_error == "no metadata error", 0.5, 1),
+    time_alpha = if_else(time_error == "no time error", 0.5, 1)
+  )
+```
+
+This is a summary of the errors found during FCS file cleanup.
+
+The minimum events for each SOP were deemed as follows:
+
+* SOP 1: `r as.integer(MIN_EVENT_SOP1)`
+* SOP 2: `r as.integer(MIN_EVENT_SOP2)`
+* SOP 3: `r as.integer(MIN_EVENT_SOP3)`
+
+# Metadata Errors
+
+Error explanation:
+
+1. missing file: FCS file is completely missing from dataset
+2. multiple systems: FCS files were acquired on different cytometers as found by
+   querying the $CYT (cytometer), $SYS (operating system), and $CYTSN (serial
+   number)
+3. too few events: FCS file has less than the minimum required events as
+   dictated by the SOP (before filtering as done with the time channel below)
+4. missing time channel: time channel is absent from the FCS file
+5. missing color channels: at least 1 of the 8 standardized color channels is
+   missing
+6. voltage/gain variation: voltage and/or gain within each channel has
+   unacceptable variation
+   
+For 6, variation was computed as the relative difference of each non-SOP-1 FCS
+file to those in SOP-1 (ie (x - x1) / x1). The unacceptable limits for voltage
+and gain were `r VDIFF_LIMIT` and `r GDIFF_LIMIT` respectively.
+
+```{r, echo = FALSE, results = "asis"}
+df_all_issues %>%
+  ggplot(aes(y = om, fill = metadata_error, alpha = metadata_alpha)) +
+  geom_bar() +
+  facet_wrap(c("group"), nrow = 1) +
+  scale_alpha_continuous(limits = c(0, 1)) +
+  labs(x = "Number of Files", y = NULL, fill = "Metadata Error") +
+  theme(legend.position = "bottom") +
+  guides(alpha = "none")
+```
+
+# Time Channel Errors
+
+Error explanation:
+
+1. metadata error: has at least one metadata error from previous
+2. has time anomaly: has either a large pause in flow or a non-monotonic time
+   channel
+3. has uneven flow rate: flow rate was determined to be uneven
+
+Note that for 2 and 3, an attempt was made to gate the regions of the time
+channel for which these errors did not occur. Being labeled with an error means
+that not enough events per the SOP were determined to be error-free.
+
+```{r, echo = FALSE, results = "asis"}
+df_all_issues %>%
+  ggplot(aes(y = om, fill = time_error, alpha = time_alpha)) +
+  geom_bar() +
+  facet_wrap(c("group"), nrow = 1) +
+  scale_alpha_continuous(limits = c(0, 1)) +
+  labs(x = "Number of Files", y = NULL, fill = "Time Error") +
+  theme(legend.position = "bottom") +
+  guides(alpha = "none")
+```
