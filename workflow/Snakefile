@@ -77,7 +77,7 @@ rule find_metadata_issues:
 rule find_time_issues:
     input:
         channels="static/time_fsc_ssc_mapping.tsv",
-        clean_meta=rules.find_metadata_issues.output.clean,
+        meta=rules.find_metadata_issues.output.issues,
     output:
         anomaly=res_time_issues / "anomaly.tsv.gz",
         flat=res_time_issues / "flat.tsv.gz",

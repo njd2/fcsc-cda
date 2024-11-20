@@ -94,7 +94,8 @@ def get_anomalies(p: Params, t: "pd.Series[float]") -> npt.NDArray[np.int64]:
     tdiff_norm = tdiff / (t.max() - t.min())
 
     large_neg = (tdiff < -p.spike_limit) & (tdiff.shift(-1) > p.spike_limit)
-    large_gap = tdiff_norm > p.gap_limit
+    neg_mask = ~large_neg.shift(1, fill_value=False)
+    large_gap = (tdiff_norm > p.gap_limit) & neg_mask
     non_mono = tdiff < -p.non_mono_limit
 
     return np.select(
@@ -216,7 +217,7 @@ def get_all_gates(c: RunConfig) -> RunResult:
 
 def main(smk: Any) -> None:
     sp = smk.params
-    p = Params(
+    params = Params(
         min_events=MinEvents(
             sop1=sp["min_event1"],
             sop2=sp["min_event2"],
@@ -229,7 +230,7 @@ def main(smk: Any) -> None:
         min_size=sp["min_size"],
     )
     channel_in = Path(smk.input["channels"])
-    meta_in = Path(smk.input["clean_meta"])
+    meta_in = Path(smk.input["meta"])
 
     anomaly_out = Path(smk.output["anomaly"])
     flat_out = Path(smk.output["flat"])
@@ -238,12 +239,21 @@ def main(smk: Any) -> None:
 
     channels = read_time_channel_mapping(channel_in)
 
-    META_COLUMNS = ["file_index", "org", "machine", "sop", "filepath"]
+    META_COLUMNS = [
+        "file_index",
+        "org",
+        "machine",
+        "sop",
+        "filepath",
+        "missing_time",
+        "percent_complete",
+    ]
 
     df = pd.read_table(meta_in)[META_COLUMNS]
     runs = [
-        RunConfig(p, file_index, Path(filepath), channels[(org, machine)], sop)
-        for file_index, org, machine, sop, filepath in df.itertuples(index=False)
+        RunConfig(params, i, Path(p), channels[(o, m)], s)
+        for i, o, m, s, p, no_time, complete in df.itertuples(index=False)
+        if i is not None and no_time is False and complete >= 100
     ]
 
     # weeeeeeeee
@@ -257,7 +267,7 @@ def main(smk: Any) -> None:
         gzip.open(event_out, "wt") as eo,
     ):
         for r in gate_results:
-            fi = str(r.file_index)
+            fi = str(int(r.file_index))
             res = r.result
 
             def write_tsv_line(b: TextIO, xs: list[Any]) -> None:
