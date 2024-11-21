@@ -1,15 +1,10 @@
 import re
 import struct
-import gzip
-import math
 import warnings
-import numpy.typing as npt
-import numpy as np
 import pandas as pd
 import fcsparser as fp  # type: ignore
 from pathlib import Path
-from typing import NamedTuple, Any, TextIO
-from dataclasses import dataclass
+from typing import NamedTuple, Any
 from multiprocessing import Pool
 
 # Convert FCS files into "standard format" (as defined by this pipeline) which
@@ -64,7 +59,6 @@ REQUIRED_NON_P_KEYWORDS = [
 
 
 class RunConfig(NamedTuple):
-    file_index: int
     ipath: Path
     opath: Path
     channel_map: dict[str, str]
@@ -112,9 +106,11 @@ def format_keywords(xs: TextKWs) -> bytes:
 
 
 def standardize_fcs(c: RunConfig) -> None:
-    meta, df = fp.parse(c.ipath, channel_naming="$PnN")
+    # ASSUME all warnings are already triggered and captured elsewhere
+    with warnings.catch_warnings(action="ignore"):
+        meta, df = fp.parse(c.ipath, channel_naming="$PnN")
 
-    new_df = df[c.start : c.end, [*c.channel_map]]
+    new_df = df[c.start : c.end + 1][[*c.channel_map]]
 
     # this is in binary for some reason
     version = meta["__header__"]["FCS format"].decode()
@@ -146,8 +142,9 @@ def standardize_fcs(c: RunConfig) -> None:
     )
 
     text_length = DATATEXT_LENGTH + len(new_text)
-    begindata = f"{HEADER_LENGTH + text_length:>DATAVALUE_LENGTH}".encode()
-    enddata = f"{begindata + new_df.size * 4:>DATAVALUE_LENGTH}".encode()
+    begindata_offset = HEADER_LENGTH + text_length
+    begindata = f"{begindata_offset:>{DATAVALUE_LENGTH}}".encode()
+    enddata = f"{begindata_offset + new_df.size * 4:>{DATAVALUE_LENGTH}}".encode()
 
     with open(c.opath, "wb") as f:
         # write new HEADER
@@ -157,13 +154,67 @@ def standardize_fcs(c: RunConfig) -> None:
         # write the rest of the TEXT keywords
         f.write(new_text)
         # write all the data
-        for r in new_df.itertuple(name=None):
+        for r in new_df.itertuples(name=None, index=False):
             f.write(struct.pack(binary_format, *r))
 
 
+OrgMachChannelMap = dict[tuple[str, str], dict[str, str]]
+
+
+# ASSUME all the channels are in a standardized order
+def read_channel_mapping(p: Path) -> OrgMachChannelMap:
+    acc: OrgMachChannelMap = {}
+    with open(p, "r") as f:
+        # skip header
+        next(f, None)
+        for i in f:
+            s = i.rstrip().split("\t")
+            org = s[0]
+            machine = s[1]
+            machine_name = s[2]
+            std_name = s[3]
+            key = (org, machine)
+            if key not in acc:
+                acc[key] = {}
+            acc[key][machine_name] = std_name
+    return acc
+
+
 def main(smk: Any) -> None:
-    issues_in = Path(smk.input["issues"])
     top_gates_in = Path(smk.input["top"])
+    channels_in = Path(smk.input["channels"])
+    meta_in = Path(smk.input["meta"])
+
+    flag_out = Path(smk.output[0])
+
+    out_dir = flag_out.parent
+
+    COLUMNS = ["org", "machine", "filepath", "start", "end"]
+
+    df_meta = pd.read_table(meta_in).set_index("file_index")
+    df_top_gates = pd.read_table(
+        top_gates_in, names=["file_index", "start", "end"]
+    ).set_index("file_index")
+
+    df = df_top_gates.join(df_meta)
+
+    om_channel_map = read_channel_mapping(channels_in)
+
+    runs = [
+        RunConfig(
+            (fp := Path(filepath)),
+            out_dir / fp.name,
+            om_channel_map[org, machine],
+            start,
+            end,
+        )
+        for org, machine, filepath, start, end in df[COLUMNS].itertuples(index=False)
+    ]
+
+    with Pool(smk.threads) as p:
+        p.map(standardize_fcs, runs)
+
+    flag_out.touch()
 
 
 main(snakemake)  # type: ignore

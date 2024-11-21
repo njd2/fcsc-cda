@@ -25,20 +25,6 @@ find_fuzzy_channel <- function(pat, channels) {
   }
 }
 
-## find_time_channel <- function(channels) {
-##   if (any(channels == "Time")) {
-##     "Time"
-##   } else if (any(channels == "HDR-T")) {
-##     # not sure what this actually means but it appears to be a time channel
-##     # (monotonic with exponential-ish differences resembling a poisson process)
-##     "HDR-T"
-##   } else if (any(channels == "TIME")) {
-##     "TIME"
-##   } else {
-##     NA
-##   }
-## }
-
 get_timestep <- function(fcs) {
   x <- flowCore::keyword(fcs)[["$TIMESTEP"]]
   ifelse(is.null(x), NA, as.double(x))
@@ -51,26 +37,31 @@ fcs_to_event_df <- function(path, i, df_mapping, df_tfs) {
   .machine <- sf[4]
   fcs <- flowCore::read.FCS(path, truncate_max_range = FALSE, emptyValue = FALSE)
   fcs_channel_names <- fcs@exprs %>% colnames()
-  channel_mapping <- df_mapping %>%
+  ## channel_mapping <- df_mapping %>%
+  ##   filter(org == .org, machine == .machine) %>%
+  ##   select(std_name, machine_name)
+  ## tfs_mapping <- df_tfs %>%
+  time_channel <- df_tfs %>%
+    filter(std_name == "time") %>%
     filter(org == .org, machine == .machine) %>%
-    select(std_name, machine_name)
-  tfs_mapping <- df_tfs %>%
-    filter(org == .org, machine == .machine) %>%
-    select(std_name, machine_name)
-  all_mapping <-  bind_rows(channel_mapping, tfs_mapping)
+    ## select(std_name, machine_name) %>%
+    pull(machine_name) %>%
+    first()
+  ## all_mapping <-  bind_rows(channel_mapping, tfs_mapping)
   ## time_channel <- find_time_channel(fcs_channel_names)
-  all_std_names <- all_mapping$std_name
+  ## all_std_names <- all_mapping$std_name
   n <- nrow(fcs@exprs)
   if (n == 0) {
     NULL
   } else {
     # ASSUME that each org/machine has all 11 channels and that they are
     # all in the same order
-    m <- all_mapping$machine_name %>%
-      map_chr(~ find_fuzzy_channel(.x, fcs_channel_names)) %>%
-      map(~ if (is.na(.x)) { rep(NA, n) } else { fcs@exprs[, .x] }) %>%
-      unlist() %>%
-      matrix(nrow = n, byrow = FALSE)
+    ## m <- all_mapping$machine_name %>%
+    ##   map_chr(~ find_fuzzy_channel(.x, fcs_channel_names)) %>%
+    ##   map(~ if (is.na(.x)) { rep(NA, n) } else { fcs@exprs[, .x] }) %>%
+    ##   unlist() %>%
+    ##   matrix(nrow = n, byrow = FALSE)
+    m <- fcs@exprs[, time_channel]
     colnames(m) <- all_std_names
     m <- cbind(m, index = i, event_index = 1:n)
     m

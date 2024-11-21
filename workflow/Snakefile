@@ -9,6 +9,7 @@ res_linkage = res_int / "linkage"
 res_meta = res_int / "meta"
 res_meta_issues = res_meta / "issues"
 res_time_issues = res_int / "time"
+res_clean = res_int / "clean"
 
 
 rule format_linkage:
@@ -106,7 +107,22 @@ rule summarize_clean_up:
         "scripts/Rmd/summarize_clean_up.Rmd"
 
 
+rule standardize_fcs:
+    input:
+        channels=rules.format_linkage.output.table,
+        meta=rules.find_metadata_issues.output.issues,
+        top=rules.find_time_issues.output.top,
+    output:
+        res_clean / "flag.txt",
+    threads: 20
+    conda:
+        "envs/fcsparser.yml"
+    script:
+        "scripts/python/standardize_fcs.py"
+
+
 rule all:
     input:
         rules.summarize_time_issues.output,
         rules.summarize_clean_up.output,
+        rules.standardize_fcs.output,
