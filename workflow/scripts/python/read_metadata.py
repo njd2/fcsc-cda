@@ -37,9 +37,10 @@ MONTHMAP = {
 class Param(NamedTuple):
     param_index: int  # the 'n' in PnX
     shortname: str  # PnN
-    log_decades: str  # PnE (field 1)
-    log_zero: str  # PnE (field 2)
-    maxrange: float | None  # PnR
+    bits: int  # PnB
+    maxrange: float  # PnR
+    log_decades: float  # PnE (field 1)
+    log_zero: float  # PnE (field 2)
     longname: str | None  # PnS
     filtername: str | None  # PnF
     gain: float | None  # PnG
@@ -58,12 +59,32 @@ class FCSMeta(NamedTuple):
     sop: int
     exp: int
     rep: int
-    total: int
     group: str
     om: str
+    # header fields
+    version: float
+    header_text0: int
+    header_text1: int
+    header_data0: int
+    header_data1: int
+    header_analysis0: int
+    header_analysis1: int
+    # required keywords
+    total: int
+    analysis0: int
+    analysis1: int
+    stext0: int
+    stext1: int
+    data0: int
+    data1: int
+    datatype: str
+    byteord: str
+    mode: str
+    nextdata: int
     filepath: Path
+    params: list[Param]
+    # optional keywords
     timestep: float | None
-    version: float | None
     btime: str | None
     etime: str | None
     volume: float | None
@@ -79,7 +100,6 @@ class FCSMeta(NamedTuple):
     institution: str | None
     system: str | None
     description: str | None
-    params: list[Param]
     warnings: list[str]
 
 
@@ -124,13 +144,14 @@ def parse_params(meta: dict[str, str]) -> list[Param]:
     params = [
         (int(m[1]), m[2], v)
         for k, v in meta.items()
-        if (m := re.match("\\$P([0-9]+)([EFGLNOPRSTV])$", k))
+        if (m := re.match("\\$P([0-9]+)([BEFGLNOPRSTV])$", k))
     ]
     grouped = groupby(sorted(params, key=lambda x: x[0]), key=lambda x: x[0])
     return [
         Param(
             param_index=g[0],
             shortname=(xs := {k: v for _, k, v in g[1]})["N"].strip(),
+            bits=int(xs["B"]),
             maxrange=int(xs["R"]),
             log_decades=float((e := xs["E"].split(","))[0]),
             log_zero=float(e[1]),
@@ -194,6 +215,7 @@ def parse_metadata(idx: int, p: Path) -> FCSMeta:
         warn_msgs = [str(x.message).replace("\n", " ") for x in w]
     # except UserWarning as e:
     # raise Exception(p.name, e)
+    header = meta["__header__"]
     params = parse_params(meta)
     btime, etime, total_time = parse_total_time(meta)
     org = s[2]
@@ -214,7 +236,25 @@ def parse_metadata(idx: int, p: Path) -> FCSMeta:
         sop=sop,
         exp=exp,
         rep=int(s[8]),
-        version=float(meta["__header__"]["FCS format"].decode()[3:]),
+        # header
+        version=float(header["FCS format"].decode()[3:]),
+        header_text0=header["text start"],
+        header_text1=header["text end"],
+        header_data0=header["data start"],
+        header_data1=header["data end"],
+        header_analysis0=header["analysis start"],
+        header_analysis1=header["analysis end"],
+        # text segment
+        stext0=int(meta["$BEGINSTEXT"]),
+        stext1=int(meta["$ENDSTEXT"]),
+        data0=int(meta["$BEGINDATA"]),
+        data1=int(meta["$ENDDATA"]),
+        analysis0=int(meta["$BEGINANALYSIS"]),
+        analysis1=int(meta["$ENDANALYSIS"]),
+        datatype=meta["$DATATYPE"],
+        nextdata=meta["$NEXTDATA"],
+        mode=meta["$MODE"],
+        byteord=meta["$BYTEORD"],
         total=int(meta["$TOT"]),
         timestep=lookup_map(float, "$TIMESTEP", meta),
         btime=btime,
