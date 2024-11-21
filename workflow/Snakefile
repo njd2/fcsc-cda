@@ -13,7 +13,8 @@ res_time_issues = res_int / "time"
 
 rule format_linkage:
     input:
-        src / "wg2_linkage.xlsx",
+        colors=src / "wg2_linkage.xlsx",
+        scatter_time="static/scatter_time_mapping.tsv",
     output:
         table=res_linkage / "wg2_linkage.tsv",
         ex_em=res_linkage / "wg2_ex_em.pdf",
@@ -37,24 +38,10 @@ rule read_fcs_meta:
         "scripts/python/read_metadata.py"
 
 
-# rule read_fcs_time_channels:
-#     input:
-#         channels="static/time_fsc_ssc_mapping.tsv",
-#         meta=rules.read_fcs_meta.output.meta,
-#     output:
-#         "results/intermediate/time_channels.tsv.gz",
-#     conda:
-#         "envs/fcsparser.yml"
-#     threads: 16
-#     script:
-#         "scripts/python/read_time_channel.py"
-
-
 rule find_metadata_issues:
     input:
         combos="static/wg2_combinations.tsv",
-        tfs="static/time_fsc_ssc_mapping.tsv",
-        linkage=rules.format_linkage.output.table,
+        channels=rules.format_linkage.output.table,
         meta=rules.read_fcs_meta.output.meta,
         params=rules.read_fcs_meta.output.params,
     output:
@@ -73,7 +60,7 @@ rule find_metadata_issues:
 
 rule find_time_issues:
     input:
-        channels="static/time_fsc_ssc_mapping.tsv",
+        channels=rules.format_linkage.output.table,
         meta=rules.find_metadata_issues.output.issues,
     output:
         anomaly=res_time_issues / "anomaly.tsv.gz",

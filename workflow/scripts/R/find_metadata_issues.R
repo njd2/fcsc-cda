@@ -77,22 +77,14 @@ df_params <- read_tsv(
 )
 
 df_channels <- read_tsv(
-  snakemake@input[["linkage"]],
-  col_types = "cciiicccc"
+  snakemake@input[["channels"]],
+  col_types = "ccccc----"
 )
-
-df_tfs <- read_tsv(
-  snakemake@input[["tfs"]],
-  col_types = "cccc"
-)
-
-df_channels_all <- df_channels %>%
-  select(org, machine, machine_name, std_name) %>%
-  bind_rows(df_tfs)
 
 df_params_std <- df_params %>%
-  mutate(machine_name = str_replace(shortname, "-(A|Area)$", "")) %>%
-  left_join(df_channels_all, by = c("org", "machine", "machine_name")) %>%
+  rename(machine_name = shortname) %>%
+  ## mutate(machine_name = str_replace(shortname, "-(A|Area)$", "")) %>%
+  left_join(df_channels, by = c("org", "machine", "machine_name")) %>%
   filter(!is.na(std_name))
 
 # if this is false we need to add lots of extra logic to deal with log scales
@@ -108,7 +100,7 @@ df_sop1_voltgain <- df_params_std %>%
   select(-org, -machine) %>%
   left_join(df_meta, by = "file_index") %>%
   filter(sop == 1) %>%
-  filter(!std_name %in% c("fsc", "ssc", "time")) %>%
+  filter(!std_name %in% c("fsc_a", "fsc_h", "ssc_a", "ssc_h", "time")) %>%
   select(org, machine, std_name, gain, detector_voltage) %>%
   group_by(org, machine, std_name) %>%
   summarize(
@@ -130,7 +122,7 @@ df_sop1_voltgain %>%
   ensure_empty("Voltage/gains are not the same in SOP1")
 
 df_voltgain_diff <- df_params_std %>%
-  filter(!std_name %in% c("fsc", "ssc", "time")) %>%
+  filter(!std_name %in% c("fsc_a", "fsc_h", "ssc_a", "ssc_h", "time")) %>%
   select(-org, -machine) %>%
   left_join(df_meta, by = "file_index") %>%
   filter(sop != 1) %>%
@@ -143,6 +135,7 @@ df_voltgain_diff <- df_params_std %>%
 
 df_voltgain_diff %>%
   write_tsv(snakemake@output[["voltgain"]])
+
 
 vdiff_issue_indices <- df_voltgain_diff %>%
   filter(vdiff > VDIFF_LIMIT) %>%
@@ -184,7 +177,7 @@ df_file_channels <- df_params_std %>%
   mutate(
     missing_time = is.na(time),
     missing_colors = if_any(c(v450, v500, fitc, pc55, pe, pc7, apc, ac7), is.na),
-    missing_scatter = if_any(c(fsc, ssc), is.na)
+    missing_scatter = if_any(c(fsc_a, fsc_h, ssc_a, ssc_h), is.na)
   )
 
 df_file_channels %>%

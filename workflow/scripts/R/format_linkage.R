@@ -8,7 +8,11 @@ ensure_empty <- function(df, msg) {
   }
 }
 
-channel_file <- snakemake@input[[1]]
+scatter_time_file <- snakemake@input[["scatter_time"]]
+
+channel_file <- snakemake@input[["colors"]]
+
+df_st <- read_tsv(scatter_time_file, col_types = "ccccc")
 
 df_channel <- read.xlsx(channel_file) %>%
   as_tibble() %>%
@@ -51,6 +55,7 @@ df_channel <- read.xlsx(channel_file) %>%
   # fix typos
   mutate(org = if_else(org == "BMSSeattle" & machine == "CantoSORP", "BMSWarren", org)) %>%
   mutate(
+    machine_name = str_trim(machine_name),
     machine_name = case_when(
       # just this one channel is malformed
       machine == "AriaIII" & org == "FDACBER" ~
@@ -155,4 +160,34 @@ df_channel %>%
 ggsave(snakemake@output[["defined"]])
 
 df_channel %>%
+  mutate(
+    machine_name = if_else(
+      machine %in% c("ImageStreamX-1", "CellStream", "CellStream-1", "CellStream-2"),
+      machine_name,
+      sprintf("%s-A", machine_name)
+    )
+  ) %>%
+  bind_rows(df_st) %>%
+  mutate(
+    std_name = factor(
+      std_name,
+      levels = c(
+        "time",
+        "fsc_a",
+        "fsc_h",
+        "ssc_a",
+        "ssc_h",
+        "v450",
+        "v500",
+        "fitc",
+        "pe",
+        "pc7",
+        "pc55",
+        "apc",
+        "ac7"
+      )
+    )
+  ) %>%
+  arrange(org, machine, std_name) %>%
+  relocate(org, machine, machine_name, std_name, std_name_long) %>%
   write_tsv(snakemake@output[["table"]])
