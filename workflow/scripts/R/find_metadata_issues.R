@@ -131,7 +131,7 @@ df_voltgain_diff <- df_params_std %>%
     vdiff = (detector_voltage - voltage1) / voltage1,
     gdiff = (gain - gain1) / gain1
   ) %>%
-  select(file_index, org, machine, om, group, material, std_name, vdiff, gdiff)
+  select(file_index, org, machine, om, group, material, std_name, std_name_long, vdiff, gdiff)
 
 df_voltgain_diff %>%
   write_tsv(snakemake@output[["voltgain"]])
@@ -146,20 +146,6 @@ gdiff_issue_indices <- df_voltgain_diff %>%
   filter(gdiff > GDIFF_LIMIT) %>%
   pull(file_index) %>%
   unique()
-
-## df_voltgain_diff %>%
-##   ggplot(aes(vdiff, om, color = std_name)) +
-##   geom_jitter(width = 0.005, height = 0.1, size = 0.5) +
-##   facet_wrap(c("group"), nrow = 1) +
-##   labs(x = "$PnV difference from SOP-1", y = NULL, color = "Std. Flour.")
-## # TODO save
-
-## df_voltgain_diff %>%
-##   ggplot(aes(gdiff, om, color = std_name)) +
-##   geom_jitter(width = 0, height = 0.1, size = 0.5) +
-##   facet_wrap(c("group"), nrow = 1) +
-##   labs(x = "$PnG difference from SOP-1", y = NULL, color = "Std. Flour.")
-## # TODO save
 
 #
 # check channel presence/absence
@@ -177,7 +163,8 @@ df_file_channels <- df_params_std %>%
   mutate(
     missing_time = is.na(time),
     missing_colors = if_any(c(v450, v500, fitc, pc55, pe, pc7, apc, ac7), is.na),
-    missing_scatter = if_any(c(fsc_a, fsc_h, ssc_a, ssc_h), is.na)
+    missing_scatter_area = if_any(c(fsc_a, ssc_a), is.na),
+    missing_scatter_height = if_any(c(fsc_h, ssc_h), is.na)
   )
 
 df_file_channels %>%
@@ -230,7 +217,8 @@ df_issues %>%
         ## has_multi_system |
         missing_time |
         missing_colors |
-        missing_scatter
+        missing_scatter_area |
+        missing_scatter_height
     )
   ) %>%
   write_tsv(snakemake@output[["clean"]])

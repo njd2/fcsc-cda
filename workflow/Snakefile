@@ -96,6 +96,7 @@ rule summarize_clean_up:
         issues=rules.find_metadata_issues.output.issues,
         events=rules.find_time_issues.output.events,
         anomaly=rules.find_time_issues.output.anomaly,
+        voltgain=rules.find_metadata_issues.output.voltgain,
     output:
         res_final / "clean_up_summary.html",
     params:
@@ -125,4 +126,4 @@ rule all:
     input:
         rules.summarize_time_issues.output,
         rules.summarize_clean_up.output,
-        rules.standardize_fcs.output,
+        # rules.standardize_fcs.output,
