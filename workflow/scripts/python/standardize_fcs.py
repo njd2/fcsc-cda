@@ -143,12 +143,12 @@ def standardize_fcs(c: RunConfig) -> None:
 
     text_length = DATATEXT_LENGTH + len(new_text)
     begindata_offset = HEADER_LENGTH + text_length
-    begindata = f"{begindata_offset:>{DATAVALUE_LENGTH}}".encode()
-    enddata = f"{begindata_offset + new_df.size * 4:>{DATAVALUE_LENGTH}}".encode()
+    begindata = f"{begindata_offset:0>{DATAVALUE_LENGTH}}".encode()
+    enddata = f"{begindata_offset + new_df.size * 4:0>{DATAVALUE_LENGTH}}".encode()
 
     with open(c.opath, "wb") as f:
         # write new HEADER
-        f.write(format_header(version, text_length).encode())
+        f.write(format_header(version, text_length - 1).encode())
         # write new begin/end TEXT keywords
         f.write(BEGINDATA_KEY + begindata + ENDDATA_KEY + enddata + DELIM)
         # write the rest of the TEXT keywords
@@ -191,12 +191,22 @@ def main(smk: Any) -> None:
 
     COLUMNS = ["org", "machine", "filepath", "start", "end"]
 
+    ISSUE_COLUMNS = [
+        "has_gain_variation",
+        "has_voltage_variation",
+        "missing_time",
+        "missing_colors",
+        "missing_scatter_area",
+        "missing_scatter_height",
+    ]
+
     df_meta = pd.read_table(meta_in).set_index("file_index")
     df_top_gates = pd.read_table(
         top_gates_in, names=["file_index", "start", "end"]
     ).set_index("file_index")
 
     df = df_top_gates.join(df_meta)
+    df = df[~df[ISSUE_COLUMNS].any(axis=1)][COLUMNS]
 
     om_channel_map = read_channel_mapping(channels_in)
 
@@ -208,7 +218,7 @@ def main(smk: Any) -> None:
             start,
             end,
         )
-        for org, machine, filepath, start, end in df[COLUMNS].itertuples(index=False)
+        for org, machine, filepath, start, end in df.itertuples(index=False)
     ]
 
     with Pool(smk.threads) as p:
