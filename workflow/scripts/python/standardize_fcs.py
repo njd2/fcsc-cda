@@ -155,15 +155,15 @@ def format_parameters(kws: TextKWs, cm: ChannelMap) -> bytes:
         for p in split_params
         if p.index_ in index_map and p.name not in "NSB"
     ]
-    # rebuild the $PnS and $PnN parameters (some of these might not be present
-    # so easier to build from scratch and add rather than selectively
-    # replace/add)
-    short_names = [x.to_short for x in index_map.values()]
-    long_names = [x.to_long for x in index_map.values()]
-    # rebuild bits to guarantee standardized format
-    bits = [x.to_bits for x in index_map.values()]
+    # rebuild the $PnS, $PnN, and $PnB parameters (some of these might not be
+    # present so easier to build from scratch and add rather than selectively
+    # replace/add). In the case of $PnB, rebuilding rather than reusing
+    # guarantees all outputs will be in the same format
+    rebuilt = [
+        y for x in index_map.values() for y in [x.to_short, x.to_long, x.to_bits]
+    ]
     # sort by index/type and serialize
-    new_params = reindexed + short_names + long_names + bits
+    new_params = reindexed + rebuilt
     new_params.sort(key=lambda x: (x.index_, x.name))
     return DELIM.join(x.to_serial for x in new_params)
 
