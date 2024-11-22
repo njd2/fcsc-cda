@@ -126,4 +126,4 @@ rule all:
     input:
         rules.summarize_time_issues.output,
         rules.summarize_clean_up.output,
-        # rules.standardize_fcs.output,
+        rules.standardize_fcs.output,

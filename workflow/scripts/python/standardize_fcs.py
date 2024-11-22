@@ -4,7 +4,7 @@ import warnings
 import pandas as pd
 import fcsparser as fp  # type: ignore
 from pathlib import Path
-from typing import NamedTuple, Any
+from typing import NamedTuple, Any, NewType
 from multiprocessing import Pool
 
 # Convert FCS files into "standard format" (as defined by this pipeline) which
@@ -21,22 +21,33 @@ from multiprocessing import Pool
 #   their DATA offsets stored in the header (we store these in the TEXT segment
 #   instead)
 
+# export everything as 32-bit/little endian
+PARAM_BITS = 32
+BYTEORD = "1,2,3,4"
+DATATYPE = "F"
+
+# We are exporting data as an array so this has to be 'list'
+MODE = "L"
+
 # record separator control code, basically guaranteed not to be in any of the
 # keywords or values
 DELIM = b"\x1e"
-
-BEGINDATA_KEY = DELIM + b"DATASTART" + DELIM
-ENDDATA_KEY = DELIM + b"DATAEND" + DELIM
 
 # allow the two datastart/end fields to hold values up to 999,999,999,999 (that
 # should be enough...hopefully)
 DATAVALUE_LENGTH = 12
 
-# length of the bytes in the BEGIN/ENDDATA fields
-DATATEXT_LENGTH = len(BEGINDATA_KEY) + len(ENDDATA_KEY) + 1 + DATAVALUE_LENGTH * 2
+# it seems most machines either use 58 bytes or 256 bytes. 58 is shorter so why
+# not? Note that the header consists of a version string (6 bytes) followed by 4
+# spaces, followed by 6 ASCII numbers which are padded to 8 bytes long (total 58
+# bytes)
+HEADER_LENGTH = 58
 
-# it seems most machines either use 58 bytes or 256 bytes. 58 is shorter ;)
-HEADER_LENGTH = 6 + 4 + 8 * 6
+_BEGINDATA_KEY = DELIM + b"$BEGINDATA" + DELIM
+_ENDDATA_KEY = DELIM + b"$ENDDATA" + DELIM
+
+# length of the bytes in the BEGIN/ENDDATA fields
+_DATATEXT_LENGTH = len(_BEGINDATA_KEY) + len(_ENDDATA_KEY) + 1 + DATAVALUE_LENGTH * 2
 
 # empty FCS header field padded to 8 bytes
 EMPTY = " " * 7 + "0"
@@ -58,16 +69,56 @@ REQUIRED_NON_P_KEYWORDS = [
 ]
 
 
+TextValue = str | int
+ParamIndex = NewType("ParamIndex", int)
+
+
+class ExpandedParameter(NamedTuple):
+    index_: ParamIndex
+    name: str
+    value: TextValue
+
+    @property
+    def key(self) -> str:
+        return f"$P{self.index_}{self.name}"
+
+    @property
+    def to_serial(self) -> bytes:
+        return self.key.encode() + DELIM + str(self.value).encode()
+
+
+class ChannelNames(NamedTuple):
+    param_index: ParamIndex
+    short: str
+    long: str
+
+    def _to_param(self, name: str, value: TextValue) -> ExpandedParameter:
+        return ExpandedParameter(self.param_index, name, value)
+
+    @property
+    def to_bits(self) -> ExpandedParameter:
+        return self._to_param("B", PARAM_BITS)
+
+    @property
+    def to_short(self) -> ExpandedParameter:
+        return self._to_param("N", self.short)
+
+    @property
+    def to_long(self) -> ExpandedParameter:
+        return self._to_param("S", self.long)
+
+
+ChannelMap = dict[str, ChannelNames]
+OrgMachChannelMap = dict[tuple[str, str], ChannelMap]
+TextKWs = dict[str, TextValue]
+
+
 class RunConfig(NamedTuple):
     ipath: Path
     opath: Path
-    channel_map: dict[str, str]
+    channel_map: ChannelMap
     start: int
     end: int
-
-
-ChannelMap = dict[str, str]
-TextKWs = dict[str, Any]
 
 
 def split_meta(meta: TextKWs) -> tuple[TextKWs, TextKWs]:
@@ -83,16 +134,38 @@ def split_meta(meta: TextKWs) -> tuple[TextKWs, TextKWs]:
     return params, non_params
 
 
-def clean_parameters(e: TextKWs, c: ChannelMap) -> TextKWs:
-    split_params: list[tuple[int, str, Any]] = [
-        (int(m[1]), m[2], v)
-        for k, v in e.items()
+def format_parameters(kws: TextKWs, cm: ChannelMap) -> bytes:
+    # split parameters apart into a sane format that python can understand
+    split_params = [
+        ExpandedParameter(ParamIndex(int(m[1])), m[2], v)
+        for k, v in kws.items()
         if (m := re.match("\\$P([0-9]+)(.)", k)) is not None
     ]
-    index_map: dict[int, int] = {
-        old: new + 1 for new, old in enumerate(i for i, _, v in split_params if v in c)
+    # build a mapping between the current indices and the new indices/names; note
+    # that that ChannelMap should have a mapping between the $PnN value and
+    # the standardized index, $PnN, and $PnS values
+    index_map: dict[ParamIndex, ChannelNames] = {
+        p.index_: cm[p.value]
+        for p in split_params
+        if isinstance(p.value, str) and p.value in cm and p.name == "N"
     }
-    return {f"$P{index_map[i]}{t}": v for i, t, v in split_params if i in index_map}
+    # reindex all parameters except for $PnS, $PnN, and $PnB
+    reindexed = [
+        ExpandedParameter(index_map[p.index_].param_index, p.name, p.value)
+        for p in split_params
+        if p.index_ in index_map and p.name not in "NSB"
+    ]
+    # rebuild the $PnS and $PnN parameters (some of these might not be present
+    # so easier to build from scratch and add rather than selectively
+    # replace/add)
+    short_names = [x.to_short for x in index_map.values()]
+    long_names = [x.to_long for x in index_map.values()]
+    # rebuild bits to guarantee standardized format
+    bits = [x.to_bits for x in index_map.values()]
+    # sort by index/type and serialize
+    new_params = reindexed + short_names + long_names + bits
+    new_params.sort(key=lambda x: (x.index_, x.name))
+    return DELIM.join(x.to_serial for x in new_params)
 
 
 def format_header(version: str, textlen: int) -> str:
@@ -123,25 +196,26 @@ def standardize_fcs(c: RunConfig) -> None:
         "$ENDANALYSIS": 0,
         "$BEGINSTEXT": 0,
         "$ENDSTEXT": 0,
-        "$BYTEORD": "1,2,3,4",
-        "$DATATYPE": "F",
-        "$MODE": "L",
+        "$BYTEORD": BYTEORD,
+        "$DATATYPE": DATATYPE,
+        "$MODE": MODE,
         "$NEXTDATA": 0,
         "$PAR": n_params,
         "$TOT": len(new_df),
     }
 
     params, non_params = split_meta(meta)
-    new_params = clean_parameters(params, c.channel_map)
 
     new_text = (
         format_keywords(required)
-        + format_keywords(new_params)
+        + DELIM
+        + format_parameters(params, c.channel_map)
+        + DELIM
         + format_keywords(non_params)
         + DELIM
     )
 
-    text_length = DATATEXT_LENGTH + len(new_text)
+    text_length = _DATATEXT_LENGTH + len(new_text)
     begindata_offset = HEADER_LENGTH + text_length
     begindata = f"{begindata_offset:0>{DATAVALUE_LENGTH}}".encode()
     enddata = f"{begindata_offset + new_df.size * 4:0>{DATAVALUE_LENGTH}}".encode()
@@ -150,7 +224,7 @@ def standardize_fcs(c: RunConfig) -> None:
         # write new HEADER
         f.write(format_header(version, text_length - 1).encode())
         # write new begin/end TEXT keywords
-        f.write(BEGINDATA_KEY + begindata + ENDDATA_KEY + enddata + DELIM)
+        f.write(_BEGINDATA_KEY + begindata + _ENDDATA_KEY + enddata + DELIM)
         # write the rest of the TEXT keywords
         f.write(new_text)
         # write all the data
@@ -158,12 +232,10 @@ def standardize_fcs(c: RunConfig) -> None:
             f.write(struct.pack(binary_format, *r))
 
 
-OrgMachChannelMap = dict[tuple[str, str], dict[str, str]]
-
-
 # ASSUME all the channels are in a standardized order
 def read_channel_mapping(p: Path) -> OrgMachChannelMap:
     acc: OrgMachChannelMap = {}
+    param_index = 1
     with open(p, "r") as f:
         # skip header
         next(f, None)
@@ -173,10 +245,14 @@ def read_channel_mapping(p: Path) -> OrgMachChannelMap:
             machine = s[1]
             machine_name = s[2]
             std_name = s[3]
+            std_name_long = s[4]
             key = (org, machine)
             if key not in acc:
+                param_index = 1
                 acc[key] = {}
-            acc[key][machine_name] = std_name
+            new = ChannelNames(ParamIndex(param_index), std_name, std_name_long)
+            acc[key][machine_name] = new
+            param_index = param_index + 1
     return acc
 
 
@@ -223,6 +299,7 @@ def main(smk: Any) -> None:
 
     with Pool(smk.threads) as p:
         p.map(standardize_fcs, runs)
+        # list(map(standardize_fcs, [runs[0]]))
 
     flag_out.touch()
 
