@@ -91,11 +91,22 @@ rule summarize_time_issues:
         "scripts/Rmd/summarize_time_issues.Rmd"
 
 
-rule summarize_clean_up:
+rule aggregate_clean_up_errors:
     input:
         issues=rules.find_metadata_issues.output.issues,
         events=rules.find_time_issues.output.events,
         anomaly=rules.find_time_issues.output.anomaly,
+    output:
+        res_final / "all_errors.tsv",
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/R/summarize_clean_up.R"
+
+
+rule summarize_clean_up:
+    input:
+        issues=rules.aggregate_clean_up_errors.output,
         voltgain=rules.find_metadata_issues.output.voltgain,
     output:
         res_final / "clean_up_summary.html",

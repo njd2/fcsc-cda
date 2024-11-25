@@ -18,47 +18,27 @@ MIN_EVENT_SOP3 <- ps[["min_events"]][["sop3"]]
 VDIFF_LIMIT <- ps[["detector_limits"]][["voltage"]]
 GDIFF_LIMIT <- ps[["detector_limits"]][["gain"]]
 
-df_voltgain <- read_tsv(
-  snakemake@input[["voltgain"]],
-  col_types = "icccccccdd"
-)
-
 df_meta_issues <- read_tsv(
   snakemake@input[["issues"]],
   col_types = cols(
     file_index = "i",
     om = "c",
     group = "c",
-    total = "i",
-    has_voltage_variation = "l",
-    has_gain_variation =  "l",
-    percent_complete = "d",
-    has_multi_serial = "l",
-    has_multi_cytometer = "l",
-    has_multi_system = "l",
-    missing_time = "l",
-    missing_colors = "l",
-    missing_scatter_area = "l",
-    missing_scatter_height = "l",
-    .default = "-"
+    .default = "l"
   )
 )
 
-anomaly_idx <- unique(read_tsv(snakemake@input[["anomaly"]], col_types = "i---")[[1]])
-
-bad_time_idx <- unique(read_tsv(snakemake@input[["events"]], col_types = "i--")[[1]])
+df_voltgain <- read_tsv(
+  snakemake@input[["voltgain"]],
+  col_types = "icccccccdd"
+)
 
 df_all_issues <- df_meta_issues %>%
-  mutate(
-    missing_file = is.na(file_index),
-    has_time_anomaly = file_index %in% bad_time_idx & !(file_index %in% anomaly_idx),
-    has_time_nonlinear = file_index %in% bad_time_idx & file_index %in% anomaly_idx
-  ) %>%
   mutate(
     metadata_error = case_when(
       missing_file ~ "1 missing file",
       has_multi_serial | has_multi_cytometer | has_multi_system ~ "2 muliple systems",
-      percent_complete < 100 ~ "3 too few events",
+      has_insufficient_events ~ "3 too few events",
       has_voltage_variation | has_gain_variation ~ "4 voltage/gain variation",
       TRUE ~ "5 no metadata error"
     ) %>%
