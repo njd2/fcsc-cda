@@ -106,13 +106,13 @@ df_voltgain %>%
   ggplot(aes(vdiff, om, color = std_name_long)) +
   geom_jitter(width = 0.005, height = 0.1, size = 0.5, na.rm= TRUE) +
   facet_wrap(c("group"), nrow = 1) +
-  labs(x = "$PnV difference from SOP-1", y = NULL, color = "Channel")
+  labs(x = "Relative $PnV difference from SOP-1 ((x - x1) / x1)", y = NULL, color = "Channel")
 
 df_voltgain %>%
   ggplot(aes(gdiff, om, color = std_name_long)) +
   geom_jitter(width = 0, height = 0.1, size = 0.5, na.rm= TRUE) +
   facet_wrap(c("group"), nrow = 1) +
-  labs(x = "$PnG difference from SOP-1", y = NULL, color = "Channel")
+  labs(x = "Relative $PnG difference from SOP-1 ((x - x1) / x1)", y = NULL, color = "Channel")
 ```
 
 # Metadata Errors
