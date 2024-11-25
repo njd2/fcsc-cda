@@ -9,6 +9,7 @@ res_linkage = res_int / "linkage"
 res_meta = res_int / "meta"
 res_meta_issues = res_meta / "issues"
 res_time_issues = res_int / "time"
+res_range = res_int / "ranges"
 res_clean = res_int / "clean"
 
 
@@ -133,8 +134,23 @@ rule standardize_fcs:
         "scripts/python/standardize_fcs.py"
 
 
+rule check_ranges:
+    input:
+        rules.aggregate_clean_up_errors.output,
+    output:
+        res_range / "overrange.tsv.gz",
+    params:
+        clean_dir=res_clean,
+        thresh=0.99,
+    conda:
+        "envs/fcsparser.yml"
+    script:
+        "scripts/python/check_ranges.py"
+
+
 rule all:
     input:
         rules.summarize_time_issues.output,
         rules.summarize_clean_up.output,
         rules.standardize_fcs.output,
+        rules.check_ranges.output,
