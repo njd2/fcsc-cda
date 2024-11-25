@@ -216,8 +216,10 @@ def parse_metadata(idx: int, p: Path) -> FCSMeta:
     # except UserWarning as e:
     # raise Exception(p.name, e)
     header = meta["__header__"]
-    params = parse_params(meta)
-    btime, etime, total_time = parse_total_time(meta)
+    # FCS keywords are case insensitive, so convert all to uppercase
+    text = {k.upper(): v for k, v in meta.items() if k != "__header__"}
+    params = parse_params(text)
+    btime, etime, total_time = parse_total_time(text)
     org = s[2]
     machine = s[3]
     material = s[4]

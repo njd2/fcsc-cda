@@ -84,7 +84,7 @@ rule summarize_time_issues:
         events=rules.find_time_issues.output.events,
         anomaly=rules.find_time_issues.output.anomaly,
     output:
-        res_final / "issues_summary.html",
+        res_final / "time_issues_summary.html",
     conda:
         "envs/tidyverse.yml"
     script:
