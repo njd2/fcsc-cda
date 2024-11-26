@@ -17,6 +17,7 @@ MIN_EVENT_SOP2 <- ps[["min_events"]][["sop2"]]
 MIN_EVENT_SOP3 <- ps[["min_events"]][["sop3"]]
 VDIFF_LIMIT <- ps[["detector_limits"]][["voltage"]]
 GDIFF_LIMIT <- ps[["detector_limits"]][["gain"]]
+TRUNCATION <- as.double(ps[["truncation_thresh"]])
 
 df_meta_issues <- read_tsv(
   snakemake@input[["issues"]],
@@ -32,6 +33,13 @@ df_voltgain <- read_tsv(
   snakemake@input[["voltgain"]],
   col_types = "icccccccdd"
 )
+
+df_ranges <- read_tsv(
+  snakemake@input[["ranges"]],
+  col_types = "icid",
+  col_names = c("file_index", "channel", "nover", "fracover")
+) %>%
+  left_join(df_meta_issues, by = "file_index")
 
 df_all_issues <- df_meta_issues %>%
   mutate(
@@ -167,4 +175,35 @@ df_all_issues %>%
   labs(x = "Number of Files", y = NULL, fill = "Time Error") +
   theme(legend.position = "bottom") +
   guides(alpha = "none")
+```
+
+# Truncation/range summary
+
+Some channels contain events that are at/near their maximum range.
+
+Events were considered truncated if they were greater than `r (TRUNCATION * 100)`
+percent of the range given by $PnR for the given channel.
+
+## Scatter
+
+```{r, echo = FALSE, results = "asis"}
+df_ranges %>%
+  filter(channel %in% c("fsc_a", "fsc_h", "ssc_a", "ssc_h")) %>%
+  ggplot(aes(fracover, om, color = channel)) +
+  geom_jitter(width = 0, height = 0.1, size = 0.5) +
+  facet_wrap(c("group"), nrow = 1) +
+  labs(x = "Truncation Rate", y = NULL, fill = "Channel") +
+  theme(legend.position = "bottom")
+```
+
+## Color
+
+```{r, echo = FALSE, results = "asis"}
+df_ranges %>%
+  filter(!channel %in% c("fsc_a", "fsc_h", "ssc_a", "ssc_h")) %>%
+  ggplot(aes(fracover, om, color = channel)) +
+  geom_jitter(width = 0, height = 0.1, size = 0.5) +
+  facet_wrap(c("group"), nrow = 1) +
+  labs(x = "Truncation Rate", y = NULL, fill = "Channel") +
+  theme(legend.position = "bottom")
 ```

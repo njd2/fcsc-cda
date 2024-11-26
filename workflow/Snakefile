@@ -105,21 +105,6 @@ rule aggregate_clean_up_errors:
         "scripts/R/summarize_clean_up.R"
 
 
-rule summarize_clean_up:
-    input:
-        issues=rules.aggregate_clean_up_errors.output,
-        voltgain=rules.find_metadata_issues.output.voltgain,
-    output:
-        res_final / "clean_up_summary.html",
-    params:
-        min_events=config["min_events"],
-        detector_limits=config["detector_limits"],
-    conda:
-        "envs/tidyverse.yml"
-    script:
-        "scripts/Rmd/summarize_clean_up.Rmd"
-
-
 rule standardize_fcs:
     input:
         channels=rules.format_linkage.output.table,
@@ -146,6 +131,23 @@ rule check_ranges:
         "envs/fcsparser.yml"
     script:
         "scripts/python/check_ranges.py"
+
+
+rule summarize_clean_up:
+    input:
+        issues=rules.aggregate_clean_up_errors.output,
+        voltgain=rules.find_metadata_issues.output.voltgain,
+        ranges=rules.check_ranges.output,
+    output:
+        res_final / "clean_up_summary.html",
+    params:
+        min_events=config["min_events"],
+        detector_limits=config["detector_limits"],
+        truncation_thresh=0.99,
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/Rmd/summarize_clean_up.Rmd"
 
 
 rule all:
