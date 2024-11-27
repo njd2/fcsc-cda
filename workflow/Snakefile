@@ -34,10 +34,11 @@ rule read_fcs_meta:
         meta=res_meta / "fcs_meta.tsv.gz",
         params=res_meta / "fcs_params.tsv.gz",
         warnings=res_meta / "warnings.tsv.gz",
+        nonstandard=res_meta / "nonstandard.tsv.gz",
     conda:
-        "envs/fcsparser.yml"
+        "envs/fcs.yml"
     script:
-        "scripts/python/read_metadata.py"
+        "scripts/python/fcs/read_metadata.py"
 
 
 rule find_metadata_issues:
@@ -74,7 +75,7 @@ rule find_time_issues:
         min_events=config["min_events"],
         time_limits=config["time_limits"],
     conda:
-        "envs/fcsparser.yml"
+        "envs/fcs.yml"
     script:
         "scripts/python/find_time_issues.py"
 
@@ -114,7 +115,7 @@ rule standardize_fcs:
         res_clean / "flag.txt",
     threads: 20
     conda:
-        "envs/fcsparser.yml"
+        "envs/fcs.yml"
     script:
         "scripts/python/standardize_fcs.py"
 
@@ -128,7 +129,7 @@ rule check_ranges:
         clean_dir=res_clean,
         thresh=0.99,
     conda:
-        "envs/fcsparser.yml"
+        "envs/fcs.yml"
     script:
         "scripts/python/check_ranges.py"
 
