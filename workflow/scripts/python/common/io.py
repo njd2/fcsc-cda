@@ -138,12 +138,6 @@ class TEXTRequired(BaseModel_):
     par: int
     tot: int
 
-    @property
-    def line(self) -> list[str]:
-        return [
-            x.value if isinstance(x, Enum) else str(x) for x in self.dict().values()
-        ]
-
 
 class TEXTCommon(TEXTRequired):
     abrt: int | None
@@ -167,15 +161,23 @@ class TEXTCommon(TEXTRequired):
     smno: str | None
     src: str | None
     sys: str | None
-    timestep: float
+    timestep: float | None
     vol: float | None
     tr: str | None
 
     @property
-    def line(self) -> list[str]:
-        return super().line + [
-            "" if x is None else str(x) for x in self.dict().values()
-        ]
+    def mapping(self) -> dict[str, str]:
+        return {
+            k: "" if v is None else (v.value if isinstance(v, Enum) else str(v))
+            for k, v in self.dict().items()
+        }
+
+    # @property
+    # def line_common(self) -> list[str]:
+    #     return [
+    #         "" if x is None else (x.value if isinstance(x, Enum) else str(x))
+    #         for x in self.dict().values()
+    #     ]
 
 
 class _TEXT3_1(BaseModel):
@@ -187,19 +189,42 @@ class _TEXT3_1(BaseModel):
     platename: str | None
     wellid: str | None
 
+    # @property
+    # def line_3_1(self) -> list[str]:
+    #     return [
+    #         "" if x is None else (x.value if isinstance(x, Enum) else str(x))
+    #         for x in self.dict().values()
+    #     ]
+
 
 class TEXT3_1(TEXTCommon, _TEXT3_1):
+    pass
 
-    @property
-    def line(self) -> list[str]:
-        return (
-            super().line
-            + [
-                "" if x is None else (x.value if isinstance(x, Enum) else str(x))
-                for x in self.dict().values()
-            ]
-            + [""] * 2
-        )
+    # @classmethod
+    # def header(cls) -> list[str]:
+    #     return [*super().__fields__.keys()] + [*cls.__fields__.keys()]
+
+
+#     @property
+#     def line(self) -> list[str]:
+#         # xs = [
+#         #     self.spillover,
+#         #     self.originality,
+#         #     self.last_modified,
+#         #     self.last_modifier,
+#         #     self.plateid,
+#         #     self.platename,
+#         #     self.wellid,
+#         # ]
+#         return (
+#             self.line_common
+#             + self.line_3_1
+#             # + [
+#             #     "" if x is None else (x.value if isinstance(x, Enum) else str(x))
+#             #     for x in xs
+#             # ]
+#             + [""] * 2
+#         )
 
 
 class _TEXT3_0(BaseModel):
@@ -208,14 +233,18 @@ class _TEXT3_0(BaseModel):
 
 
 class TEXT3_0(TEXTCommon, _TEXT3_0):
+    pass
 
-    @property
-    def line(self) -> list[str]:
-        return (
-            super().line
-            + [""] * 7
-            + ["" if x is None else str(x) for x in self.dict().values()]
-        )
+
+#     # @classmethod
+#     # def header(cls) -> list[str]:
+#     #     return [*super().__fields__.keys()] + [*cls.__fields__.keys()]
+
+#     @property
+#     def line(self) -> list[str]:
+#         # xs = [self.comp, self.unicode]
+#         # return self.line_common + [""] * 7 + ["" if x is None else x for x in xs]
+#         return self.line_common + [""] * 7 + self.line_3_0
 
 
 TEXT_HEADER = (
@@ -283,7 +312,7 @@ class ParsedParam(BaseModel):
     n: str
     f: str | None
     g: float | None
-    l: list[int]
+    l: list[int] = []
     o: int | None
     p: int | None
     s: str | None
@@ -296,9 +325,33 @@ class ParsedParam(BaseModel):
     @validator("e", pre=True)
     def validate_amp_type(cls, v: Any) -> AmpType:
         assert isinstance(v, str), "amp type must be string"
-        m = re.match("([0-9.]+),([0-9.]+)", v)
-        assert m is not None, "amp type must be like 'f1,f2'"
+        m = re.match("([0-9.]+), *([0-9.]+)", v)
+        assert m is not None, f"amp type must be like 'f1,f2, got {v}'"
         return AmpType(float(m[1]), float(m[2]))
+
+    @validator("l", pre=True)
+    def validate_wavelength(cls, v: Any) -> list[int]:
+        if v is None:
+            return []
+        assert isinstance(v, str), "wavelength must be string"
+        if v == "NA":
+            return []
+        try:
+            return [int(x) for x in v.split(",")]
+        except ValueError:
+            assert False, f"wavelength must be like 'n1[[,n2]...], got {v}'"
+
+    @validator("v", pre=True)
+    def validate_voltage(cls, v: Any) -> float | None:
+        if v is None:
+            return None
+        assert isinstance(v, str), "voltage must be string"
+        if v == "NA":
+            return None
+        try:
+            return float(v)
+        except ValueError:
+            assert False, f"wavelength must be a float, got {v}'"
 
     @validator("calibration", pre=True)
     def validate_calibration(cls, v: Any) -> Calibration | None:
@@ -376,7 +429,7 @@ class ParsedParam(BaseModel):
             self.n,
             self.f,
             self.g,
-            self.l,
+            ",".join([str(x) for x in self.l]),
             self.o,
             self.p,
             self.t,
@@ -411,6 +464,10 @@ class FCSHeader(NamedTuple):
     data_start: int
     data_end: int
 
+    @property
+    def line(self) -> list[str]:
+        return [str(x) for x in self._asdict().values()]
+
 
 @dataclass(frozen=True)
 class ParsedTEXT:
@@ -418,6 +475,7 @@ class ParsedTEXT:
     standard: TEXT3_0 | TEXT3_1
     params: list[ParamKeyword]
     nonstandard: dict[str, str]
+    deviant: dict[str, str]
 
 
 AnyTEXT = TEXT3_0 | TEXT3_1
@@ -468,29 +526,39 @@ def read_header(meta: dict[str, Any]) -> tuple[FCSHeader, Version]:
 
 def split_meta(meta: dict[str, Any]) -> ParsedTEXT:
     header, version = read_header(meta)
+    # based on version, choose the parameter pattern and standard fields we need
+    pat = version.choose(PARAM_RE_3_0, PARAM_RE_3_1)
+    standard_fields = [
+        "$" + x for x in version.choose(TEXT3_0.__fields__, TEXT3_1.__fields__)
+    ]
     # convert all to lowercase (keywords are not case sensitive); also remove
     # gating parameters (for now) since idk what to do with them
     text = {
         k.lower(): v
         for k, v in meta.items()
-        if k != "__header__" or re.match("\\$(G|R|Pk|PKN)[0-9]+.", k) is None
+        if not (k == "__header__" or re.match("\\$(G|R|Pk|PKN)[0-9]+.", k) is not None)
     }
-    print(text["$flowrate"])
-    pat = version.choose(PARAM_RE_3_0, PARAM_RE_3_1)
+    # pull all parameters into their own class (these are special)
     params = {
         k: ParamKeyword(ParamIndex(int(m[1])), m[2], v)
         for k, v in text.items()
         if (m := re.match(pat, k)) is not None
     }
     nonparams = {k: v for k, v in text.items() if k not in params}
-    standard = {
-        m[1]: v
-        for k, v in nonparams.items()
-        if (m := re.match("\\$(.+)", k)) is not None
+    # not all machines follow the real standard; they are supposed to put "$" in
+    # front of all standard names, but this doesn't always happen :(
+    # maybe_standard = {
+    #     k: v for k, v in nonparams.items() if re.match("\\$.+", k) is not None
+    # }
+    standard = version.choose(TEXT3_0, TEXT3_1)(
+        **{k[1:]: v for k, v in nonparams.items() if k in standard_fields}
+    )
+    nonstandard = {k: str(v) for k, v in nonparams.items() if k not in standard_fields}
+    deviant = {
+        k: str(v) for k, v in nonstandard.items() if re.match("\\$.+", k) is not None
     }
-    _text = version.choose(TEXT3_0, TEXT3_1)(**standard)
-    nonstandard = {k: v for k, v in nonparams.items() if k not in standard}
-    return ParsedTEXT(header, _text, [*params.values()], nonstandard)
+    _nonstandard = {k: str(v) for k, v in nonstandard.items() if k not in deviant}
+    return ParsedTEXT(header, standard, [*params.values()], _nonstandard, deviant)
 
 
 def write_fcs(path: Path, p: FCSWritable) -> None:

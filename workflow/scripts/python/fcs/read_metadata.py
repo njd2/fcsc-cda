@@ -4,6 +4,8 @@ from typing import NamedTuple, Any
 import datetime as dt
 from itertools import groupby
 from common.io import (
+    TEXT3_1,
+    Version,
     ParamIndex,
     read_fcs_metadata,
     FCSHeader,
@@ -70,6 +72,21 @@ class FCSCMeta(NamedTuple):
     om: str
     filepath: Path
 
+    @property
+    def line(self) -> list[str]:
+        return [
+            str(self.file_index),
+            self.org,
+            self.machine,
+            self.material,
+            str(self.sop),
+            str(self.exp),
+            str(self.rep),
+            self.group,
+            self.om,
+            str(self.filepath),
+        ]
+
 
 class FCSMeta(NamedTuple):
     fcsc: FCSCMeta
@@ -77,6 +94,7 @@ class FCSMeta(NamedTuple):
     standard: AnyTEXT
     params: dict[ParamIndex, ParsedParam]
     nonstandard: dict[str, str]
+    deviant: dict[str, str]
     total_time: float | None
     warnings: list[str]
 
@@ -172,6 +190,7 @@ def parse_metadata(idx: int, p: Path) -> FCSMeta:
         res.meta.standard,
         params,
         res.meta.nonstandard,
+        res.meta.deviant,
         total_time,
         res.warnings,
     )
@@ -201,14 +220,21 @@ def main(smk: Any) -> None:
             *FCSHeader._fields,
             *TEXT_HEADER,
             "total_time",
+            "version",
         ]
         f.write(to_tsv_line(header))
         for m in allmeta:
-            xs = (
-                [*m.fcsc, *m.header._asdict().values()]
-                + m.standard.line
-                + [m.total_time]
-            )
+            version = (
+                Version.v3_1 if isinstance(m.standard, TEXT3_1) else Version.v3_0
+            ).value
+            sm = m.standard.mapping
+            xs = [
+                *m.fcsc.line,
+                *m.header.line,
+                *[sm[x] if x in sm else "" for x in TEXT_HEADER],
+                "" if m.total_time is None else str(m.total_time),
+                version,
+            ]
             f.write(to_tsv_line(xs))
 
     with gzip.open(params_out, "wt") as f:
@@ -220,15 +246,18 @@ def main(smk: Any) -> None:
         f.write(to_tsv_line(header))
         for m in allmeta:
             for pi, pd in m.params.items():
-                xs = [*m.fcsc, pi, *pd.line]
+                xs = [*m.fcsc.line, str(pi), *pd.line]
                 f.write(to_tsv_line(xs))
 
     with gzip.open(nonstandard_out, "wt") as f:
-        header = [*FCSCMeta._fields, "key", "value"]
+        header = [*FCSCMeta._fields, "deviant", "key", "value"]
         f.write(to_tsv_line(header))
         for m in allmeta:
             for k, v in m.nonstandard.items():
-                xs = [*m.fcsc, k, v]
+                xs = [*m.fcsc.line, "False", k, v.replace("\n", " ").replace("\t", " ")]
+                f.write(to_tsv_line(xs))
+            for k, v in m.deviant.items():
+                xs = [*m.fcsc.line, "True", k, v.replace("\n", " ").replace("\t", " ")]
                 f.write(to_tsv_line(xs))
 
     with gzip.open(warnings_out, "wt") as f:
@@ -236,7 +265,7 @@ def main(smk: Any) -> None:
         f.write(to_tsv_line(header))
         for m in allmeta:
             for w in m.warnings:
-                xs = [*m.fcsc, pi, w]
+                xs = [*m.fcsc.line, str(pi), w]
                 f.write(to_tsv_line(xs))
 
 
