@@ -6,3 +6,4 @@ results
 *.tsv.gz
 *.gz
 *.pdf
+*.pyc

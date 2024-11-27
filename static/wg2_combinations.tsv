@@ -1,4 +1,4 @@
-material	sop	exp	rep	org	machine
+material	sop	eid	rep	org	machine
 FC-APC-Cy7	1	1	1	AgilentSC	Quanteon
 FC-APC	1	1	1	AgilentSC	Quanteon
 FC-FITC	1	1	1	AgilentSC	Quanteon

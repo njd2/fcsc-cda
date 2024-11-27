@@ -21,27 +21,6 @@ from common.functional import fmap_maybe
 # Z = TypeVar("Z")
 
 
-# MONTHMAP = {
-#     k: i + 1
-#     for i, k, in enumerate(
-#         [
-#             "jan",
-#             "feb",
-#             "mar",
-#             "apr",
-#             "may",
-#             "jun",
-#             "jul",
-#             "aug",
-#             "sep",
-#             "oct",
-#             "nov",
-#             "dec",
-#         ]
-#     )
-# }
-
-
 # # TODO these might make more sense as pydantic classes
 # class Param(NamedTuple):
 #     param_index: int  # the 'n' in PnX
@@ -66,7 +45,7 @@ class FCSCMeta(NamedTuple):
     machine: str
     material: str
     sop: int
-    exp: int
+    eid: int
     rep: int
     group: str
     om: str
@@ -80,7 +59,7 @@ class FCSCMeta(NamedTuple):
             self.machine,
             self.material,
             str(self.sop),
-            str(self.exp),
+            str(self.eid),
             str(self.rep),
             self.group,
             self.om,
@@ -97,24 +76,6 @@ class FCSMeta(NamedTuple):
     deviant: dict[str, str]
     total_time: float | None
     warnings: list[str]
-
-
-# def parse_date(s: str) -> str:
-#     """
-#     Parse the date in each cytometer to standardized format.
-
-#     Each cytometer (unfortunately) saves their date in a slightly different
-#     format. Some are like YYYY-MM-DD, others like DD-MM-YYYY, different
-#     cases for month, etc.
-
-#     Sad face.
-#     """
-#     ss = s.split("-")
-#     year_is_first = len(ss[0]) == 4
-#     year_n = int(ss[0 if year_is_first else 2])
-#     day_n = int(ss[2 if year_is_first else 0])
-#     month_n = MONTHMAP[ss[1].lower()]
-#     return dt.date(year_n, month_n, day_n).isoformat()
 
 
 def parse_params(ps: list[ParamKeyword]) -> dict[ParamIndex, ParsedParam]:
@@ -167,15 +128,15 @@ def parse_metadata(idx: int, p: Path) -> FCSMeta:
     machine = s[3]
     material = s[4]
     sop = int(s[5][5])
-    exp = int(s[6][1])
+    eid = int(s[6][1])
     fcsc = FCSCMeta(
         file_index=idx,
         org=org,
         machine=machine,
         material=material,
         sop=sop,
-        exp=exp,
-        group=parse_group(sop, exp, material),
+        eid=eid,
+        group=parse_group(sop, eid, material),
         om=f"{org}_{machine}",
         rep=int(s[8]),
         filepath=p,

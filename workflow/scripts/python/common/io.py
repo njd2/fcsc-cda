@@ -1,6 +1,8 @@
 import re
 import struct
+import calendar
 import warnings
+import datetime as dt
 from pathlib import Path
 from typing import NamedTuple, Callable, NewType, Any, TypeVar, assert_never
 import pandas as pd
@@ -8,6 +10,7 @@ import fcsparser as fp  # type: ignore
 from pydantic import BaseModel as BaseModel_, validator
 from dataclasses import dataclass
 from enum import Enum
+from common.functional import fmap_maybe
 
 X = TypeVar("X")
 Y = TypeVar("Y")
@@ -139,6 +142,47 @@ class TEXTRequired(BaseModel_):
     tot: int
 
 
+# MONTHMAP = {
+#     k: i + 1
+#     for i, k, in enumerate(
+#         [
+#             "jan",
+#             "feb",
+#             "mar",
+#             "apr",
+#             "may",
+#             "jun",
+#             "jul",
+#             "aug",
+#             "sep",
+#             "oct",
+#             "nov",
+#             "dec",
+#         ]
+#     )
+# }
+
+# MONTH_RE = f"({"|".join(MONTHMAP.keys())})"
+
+
+def month_to_int(s: str) -> int | None:
+    _s = s.lower()
+    # NOTE: month_abbr has a blank string at 0 so that the actual months start
+    # at index 1
+    return next(
+        (i for i, m in enumerate(calendar.month_abbr) if m.lower() == _s),
+        None,
+    )
+
+
+def make_date(yyyy: str, mmm: str, dd: str) -> dt.date | None:
+    return fmap_maybe(lambda m: dt.date(int(yyyy), m, int(dd)), month_to_int(mmm))
+
+
+MONTH_RE_YYYY_MMM_DD = re.compile("([0-9]{4})-([A-Za-z]{3})-([0-9]{2})")
+MONTH_RE_DD_MMM_YYYY = re.compile("([0-9]{2})-([A-Za-z]{3})-([0-9]{4})")
+
+
 class TEXTCommon(TEXTRequired):
     abrt: int | None
     btim: str | None  # hh:mm:ss[.cc]
@@ -148,7 +192,7 @@ class TEXTCommon(TEXTRequired):
     # don't want
     cyt: str | None
     cytsn: str | None
-    date: str | None  # formatted like dd-mmm-yyyy (although many don't do this)
+    date: dt.date | None
     etim: str | None  # hh:mm:ss[.cc]
     exp: str | None
     fil: str | None
@@ -164,6 +208,23 @@ class TEXTCommon(TEXTRequired):
     timestep: float | None
     vol: float | None
     tr: str | None
+
+    @validator("date", pre=True)
+    def validate_date(cls, v: Any) -> dt.date | None:
+        # the date field is *supposed* to be dd-mmm-yyyy according to the spec,
+        # but unfortunately many machines don't obey this convention :/
+        if v is None:
+            return None
+        assert isinstance(v, str), "date must be a string"
+        m1 = re.match(MONTH_RE_YYYY_MMM_DD, v)
+        d = None
+        if m1 is not None:
+            d = make_date(m1[1], m1[2], m1[3])
+        m2 = re.match(MONTH_RE_DD_MMM_YYYY, v)
+        if m2 is not None:
+            d = make_date(m2[3], m2[2], m2[1])
+        assert d is not None, f"date must be YYYY-MMM-DD or DD-MMM-YYYY, got {v}"
+        return d
 
     @property
     def mapping(self) -> dict[str, str]:

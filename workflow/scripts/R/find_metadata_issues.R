@@ -24,17 +24,17 @@ df_combos <- read_tsv(
     group = case_when(
       sop == 1 ~ "SOP 1",
       sop == 2 ~ case_when(
-        exp == 1 ~ "SOP 2: Matrix 1",
-        exp == 2 ~ "SOP 2: Matrix 2",
-        exp == 3 ~ "SOP 2: Matrix 3",
-        exp == 4 ~ "SOP 2: Matrix 3/4"
+        eid == 1 ~ "SOP 2: Matrix 1",
+        eid == 2 ~ "SOP 2: Matrix 2",
+        eid == 3 ~ "SOP 2: Matrix 3",
+        eid == 4 ~ "SOP 2: Matrix 3/4"
       ),
       sop == 3 ~ case_when(
         str_detect(material, "fmo") ~ "SOP 3 - Test FMO",
-        exp == 1 ~ "SOP 3: Test Pheno",
-        exp == 2 ~ "SOP 3: Test Count",
-        exp == 3 ~ "SOP 3: QC Count",
-        exp == 4 ~ "SOP 3: QC Pheno"
+        eid == 1 ~ "SOP 3: Test Pheno",
+        eid == 2 ~ "SOP 3: Test Count",
+        eid == 3 ~ "SOP 3: QC Count",
+        eid == 4 ~ "SOP 3: QC Pheno"
       )
     )
   )
@@ -44,16 +44,16 @@ df_meta <- read_tsv(
   col_types = cols(
     file_index = "i",
     sop = "i",
-    exp = "i",
+    eid = "i",
     rep = "i",
-    total = "i",
+    tot = "i",
     timestep = "d",
-    volume = "d",
+    vol = "d",
     lost = "i",
-    aberrant = "i",
+    abrt = "i",
     version = "c",
     total_time = "d",
-    run_date = "D",
+    date = "D",
     .default = "c"
   )
 ) %>%
@@ -64,6 +64,10 @@ df_params <- read_tsv(
   col_types = cols(
     file_index = "i",
     param_index = "i",
+    eid = "-",
+    sop = "-",
+    rep = "-",
+    material = "-",
     maxrange = "d",
     log_decades = "d",
     log_zero = "d",
@@ -176,15 +180,15 @@ df_file_channels_short <- df_file_channels %>%
 df_multi_issues <- df_meta %>%
   group_by(org, machine) %>%
   mutate(
-    has_multi_serial = length(unique(serial)) > 1,
-    has_multi_cytometer = length(unique(cytometer)) > 1,
-    has_multi_system = length(unique(system)) > 1
+    has_multi_serial = length(unique(cytsn)) > 1,
+    has_multi_cytometer = length(unique(cyt)) > 1,
+    has_multi_system = length(unique(sys)) > 1
   ) %>%
   ungroup() %>%
   select(file_index, starts_with("has_"))
 
 df_issues <- df_combos %>%
-  left_join(df_meta, by = c("org", "machine", "sop", "exp", "rep", "material")) %>%
+  left_join(df_meta, by = c("org", "machine", "sop", "eid", "rep", "material")) %>%
   mutate(
     min_events = case_when(
       sop == 1 ~ MIN_EVENT_SOP1,
@@ -193,14 +197,14 @@ df_issues <- df_combos %>%
     ),
     has_voltage_variation = file_index %in% vdiff_issue_indices,
     has_gain_variation = file_index %in% gdiff_issue_indices,
-    missing_events = total - min_events,
-    percent_complete = total / min_events * 100
+    missing_events = tot - min_events,
+    percent_complete = tot / min_events * 100
   ) %>%
   left_join(df_multi_issues, by = "file_index") %>%
   left_join(df_file_channels_short, by = "file_index") %>%
   group_by(org, machine) %>%
   ungroup() %>%
-  relocate(file_index, org, machine, material, sop, exp, rep, om, group) %>%
+  relocate(file_index, org, machine, material, sop, eid, rep, om, group) %>%
   arrange(file_index)
 
 df_issues %>%
