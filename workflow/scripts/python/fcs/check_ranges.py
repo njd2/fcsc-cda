@@ -1,12 +1,8 @@
-import re
-import warnings
 import gzip
 import pandas as pd
-import fcsparser as fp  # type: ignore
 from pathlib import Path
-from typing import NamedTuple, TypeVar, Callable, Any
-import datetime as dt
-from itertools import groupby
+from typing import NamedTuple, Any
+from common.io import read_fcs, ParamKeyword, Ptype
 
 
 class Result(NamedTuple):
@@ -16,31 +12,22 @@ class Result(NamedTuple):
     frac_over: float
 
 
-def read_channel_ranges(meta: dict[str, str | int]) -> dict[str, int]:
-    names = {
-        int(m[1]): v
-        for k, v in meta.items()
-        if (m := re.match("\\$P([0-9]+)N", k)) is not None and isinstance(v, str)
-    }
-    return {
-        names[int(m[1])]: int(v)
-        for k, v in meta.items()
-        if (m := re.match("\\$P([0-9]+)R", k)) is not None and isinstance(v, str)
-    }
+def read_channel_ranges(ps: list[ParamKeyword]) -> dict[str, int]:
+    names = {int(p.index_): p.value for p in ps if p.ptype is Ptype.NAME}
+    return {names[p.index_]: int(p.value) for p in ps if p.ptype is Ptype.MAXRANGE}
 
 
 def check_ranges(file_index: int, path: Path, thresh: float) -> list[Result]:
-    with warnings.catch_warnings(action="ignore"):
-        meta, events = fp.parse(path, channel_naming="$PnN")
+    p = read_fcs(path)
 
-    n = len(events)
-    rs = read_channel_ranges(meta)
+    n = len(p.events)
+    rs = read_channel_ranges(p.meta.params)
 
     return [
         Result(
             file_index,
             name,
-            (x := (events[name] > (rng * thresh)).sum()),
+            (x := (p.events[name] > (rng * thresh)).sum()),
             x / n,
         )
         for name, rng in rs.items()

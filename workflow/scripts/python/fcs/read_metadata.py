@@ -4,39 +4,18 @@ from typing import NamedTuple, Any
 import datetime as dt
 from itertools import groupby
 from common.io import (
-    TEXT3_1,
+    group_params,
+    _TEXT31,
+    StandardKey,
     Version,
     ParamIndex,
     read_fcs_metadata,
     FCSHeader,
-    TEXT_HEADER,
-    AnyTEXT,
+    TABULAR_TEXT_HEADER,
+    TabularTEXT,
     ParamKeyword,
     ParsedParam,
 )
-from common.functional import fmap_maybe
-
-# X = TypeVar("X")
-# Y = TypeVar("Y")
-# Z = TypeVar("Z")
-
-
-# # TODO these might make more sense as pydantic classes
-# class Param(NamedTuple):
-#     param_index: int  # the 'n' in PnX
-#     shortname: str  # PnN
-#     bits: int  # PnB
-#     maxrange: float  # PnR
-#     log_decades: float  # PnE (field 1)
-#     log_zero: float  # PnE (field 2)
-#     longname: str | None  # PnS
-#     filtername: str | None  # PnF
-#     gain: float | None  # PnG
-#     wavelength: float | None  # PnL
-#     power: float | None  # PnO
-#     percent_emitted: float | None  # PnP
-#     detector_type: str | None  # PnT
-#     detector_voltage: float | None  # PnV
 
 
 class FCSCMeta(NamedTuple):
@@ -70,36 +49,30 @@ class FCSCMeta(NamedTuple):
 class FCSMeta(NamedTuple):
     fcsc: FCSCMeta
     header: FCSHeader
-    standard: AnyTEXT
+    standard: TabularTEXT
     params: dict[ParamIndex, ParsedParam]
     nonstandard: dict[str, str]
-    deviant: dict[str, str]
+    deviant: dict[StandardKey, str]
     total_time: float | None
     warnings: list[str]
 
 
-def parse_params(ps: list[ParamKeyword]) -> dict[ParamIndex, ParsedParam]:
-    grouped = groupby(sorted(ps, key=lambda x: x.index_), key=lambda x: x.index_)
-    return {
-        g[0]: ParsedParam.parse_obj({k: str(v) for _, k, v in g[1]}) for g in grouped
-    }
+# def parse_params(ps: list[ParamKeyword]) -> dict[ParamIndex, ParsedParam]:
+#     grouped = groupby(sorted(ps, key=lambda x: x.index_), key=lambda x: x.index_)
+#     return {
+#         g[0]: ParsedParam.parse_obj({k: str(v) for _, k, v in g[1]}) for g in grouped
+#     }
 
 
-def parse_total_time(meta: AnyTEXT) -> tuple[str | None, str | None, float | None]:
-    btime = fmap_maybe(dt.time.fromisoformat, meta.btim)
-    etime = fmap_maybe(dt.time.fromisoformat, meta.etim)
-    if btime is not None and etime is not None:
-        offset = dt.timedelta(days=0 if btime < etime else 1)
-        begin = dt.datetime.combine(dt.date.today(), btime)
-        end = dt.datetime.combine(dt.date.today() + offset, etime)
+def parse_total_time(meta: TabularTEXT) -> tuple[str | None, str | None, float | None]:
+    if meta.btim is not None and meta.etim is not None:
+        offset = dt.timedelta(days=0 if meta.btim < meta.etim else 1)
+        begin = dt.datetime.combine(dt.date.today(), meta.btim)
+        end = dt.datetime.combine(dt.date.today() + offset, meta.etim)
         total = (end - begin).total_seconds()
     else:
         total = None
-    return (
-        fmap_maybe(lambda x: x.isoformat(), btime),
-        fmap_maybe(lambda x: x.isoformat(), etime),
-        total,
-    )
+    return (str(meta.btim), str(meta.etim), total)
 
 
 def parse_group(sop: int, exp: int, material: str) -> str:
@@ -143,11 +116,11 @@ def parse_metadata(idx: int, p: Path) -> FCSMeta:
     )
 
     res = read_fcs_metadata(p)
-    params = parse_params(res.meta.params)
+    params = group_params(res.meta.params)
     btime, etime, total_time = parse_total_time(res.meta.standard)
     return FCSMeta(
         fcsc,
-        res.meta.header,
+        res.header,
         res.meta.standard,
         params,
         res.meta.nonstandard,
@@ -179,20 +152,20 @@ def main(smk: Any) -> None:
         header = [
             *FCSCMeta._fields,
             *FCSHeader._fields,
-            *TEXT_HEADER,
+            *TABULAR_TEXT_HEADER,
             "total_time",
             "version",
         ]
         f.write(to_tsv_line(header))
         for m in allmeta:
             version = (
-                Version.v3_1 if isinstance(m.standard, TEXT3_1) else Version.v3_0
+                Version.v3_1 if isinstance(m.standard, _TEXT31) else Version.v3_0
             ).value
             sm = m.standard.mapping
             xs = [
                 *m.fcsc.line,
                 *m.header.line,
-                *[sm[x] if x in sm else "" for x in TEXT_HEADER],
+                *[sm[x] if x in sm else "" for x in TABULAR_TEXT_HEADER],
                 "" if m.total_time is None else str(m.total_time),
                 version,
             ]
@@ -215,10 +188,20 @@ def main(smk: Any) -> None:
         f.write(to_tsv_line(header))
         for m in allmeta:
             for k, v in m.nonstandard.items():
-                xs = [*m.fcsc.line, "False", k, v.replace("\n", " ").replace("\t", " ")]
+                xs = [
+                    *m.fcsc.line,
+                    "False",
+                    k,
+                    v.replace("\n", "\\n").replace("\t", "\\t"),
+                ]
                 f.write(to_tsv_line(xs))
             for k, v in m.deviant.items():
-                xs = [*m.fcsc.line, "True", k, v.replace("\n", " ").replace("\t", " ")]
+                xs = [
+                    *m.fcsc.line,
+                    "True",
+                    k,
+                    v.replace("\n", "\\n").replace("\t", "\\t"),
+                ]
                 f.write(to_tsv_line(xs))
 
     with gzip.open(warnings_out, "wt") as f:
@@ -226,7 +209,7 @@ def main(smk: Any) -> None:
         f.write(to_tsv_line(header))
         for m in allmeta:
             for w in m.warnings:
-                xs = [*m.fcsc.line, str(pi), w]
+                xs = [*m.fcsc.line, w]
                 f.write(to_tsv_line(xs))
 
 

@@ -1,17 +1,14 @@
-import re
 import pandas as pd
 from pathlib import Path
 from typing import NamedTuple, Any
 from multiprocessing import Pool
 from common.io import (
-    FCSWritable,
-    ParsedFCS,
+    Delim,
+    WritableFCS,
+    ParsedEvents,
     with_fcs,
     ParamKeyword,
     ParamIndex,
-    TextValue,
-    PARAM_BITS,
-    REQUIRED_NON_P_KEYWORDS,
 )
 
 # Convert FCS files into "standard format" (as defined by this pipeline) which
@@ -24,12 +21,11 @@ class ChannelNames(NamedTuple):
     short: str
     long: str
 
-    def _to_param(self, name: str, value: TextValue) -> ParamKeyword:
+    def _to_param(self, name: str, value: str) -> ParamKeyword:
         return ParamKeyword(self.param_index, name, value)
 
-    @property
-    def to_bits(self) -> ParamKeyword:
-        return self._to_param("B", PARAM_BITS)
+    def to_bits(self, bits: int) -> ParamKeyword:
+        return self._to_param("B", str(bits))
 
     @property
     def to_short(self) -> ParamKeyword:
@@ -42,7 +38,7 @@ class ChannelNames(NamedTuple):
 
 ChannelMap = dict[str, ChannelNames]
 OrgMachChannelMap = dict[tuple[str, str], ChannelMap]
-TextKWs = dict[str, TextValue]
+TextKWs = dict[str, str]
 
 
 class RunConfig(NamedTuple):
@@ -53,54 +49,50 @@ class RunConfig(NamedTuple):
     end: int
 
 
-def split_meta(meta: TextKWs) -> tuple[TextKWs, TextKWs]:
-    nonrequired = {
-        k: v
-        for k, v in meta.items()
-        if k != "__header__" and k not in REQUIRED_NON_P_KEYWORDS
-    }
-    params = {
-        k: v for k, v in nonrequired.items() if re.match("\\$P[0-9]+", k) is not None
-    }
-    non_params = {k: v for k, v in nonrequired.items() if k not in params}
-    return params, non_params
-
-
-def format_parameters(ps: list[ParamKeyword], cm: ChannelMap) -> list[ParamKeyword]:
+def format_parameters(
+    ps: list[ParamKeyword], cm: ChannelMap, bits: int
+) -> list[ParamKeyword]:
     # build a mapping between the current indices and the new indices/names; note
     # that that ChannelMap should have a mapping between the $PnN value and
     # the standardized index, $PnN, and $PnS values
     index_map: dict[ParamIndex, ChannelNames] = {
         p.index_: cm[p.value]
         for p in ps
-        if isinstance(p.value, str) and p.value in cm and p.name == "N"
+        if isinstance(p.value, str) and p.value in cm and p.ptype == "N"
     }
     # reindex all parameters except for $PnS, $PnN, and $PnB
     reindexed = [
-        ParamKeyword(index_map[p.index_].param_index, p.name, p.value)
+        ParamKeyword(index_map[p.index_].param_index, p.ptype, p.value)
         for p in ps
-        if p.index_ in index_map and p.name not in "NSB"
+        if p.index_ in index_map and p.ptype not in "NSB"
     ]
     # rebuild the $PnS, $PnN, and $PnB parameters (some of these might not be
     # present so easier to build from scratch and add rather than selectively
     # replace/add). In the case of $PnB, rebuilding rather than reusing
     # guarantees all outputs will be in the same format
     rebuilt = [
-        y for x in index_map.values() for y in [x.to_short, x.to_long, x.to_bits]
+        y
+        for x in index_map.values()
+        for y in [
+            x.to_short,
+            x.to_long,
+            x.to_bits(bits),
+        ]
     ]
     # sort by index/type and serialize
     new_params = reindexed + rebuilt
-    new_params.sort(key=lambda x: (x.index_, x.name))
+    new_params.sort(key=lambda x: (x.index_, x.ptype))
     return new_params
 
 
 def standardize_fcs(c: RunConfig) -> None:
-    def go(p: ParsedFCS) -> FCSWritable:
+    def go(p: ParsedEvents) -> WritableFCS:
         new_df = p.events[c.start : c.end + 1][[*c.channel_map]]
-        new_params = format_parameters(p.params, c.channel_map)
-        return FCSWritable(new_params, p.other, new_df)
+        new_params = format_parameters(p.meta.params, c.channel_map, 32)
+        other = {**{str(k): v for k, v in p.meta.deviant.items()}, **p.meta.nonstandard}
+        return WritableFCS(p.meta.standard.serializable, new_params, other, new_df)
 
-    with_fcs(c.ipath, c.opath, go)
+    with_fcs(c.ipath, c.opath, go, Delim(30), False, 12)
 
 
 # ASSUME all the channels are in a standardized order

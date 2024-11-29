@@ -1,15 +1,14 @@
 import gzip
 import math
-import warnings
 import numpy.typing as npt
 import numpy as np
 import pandas as pd
-import fcsparser as fp  # type: ignore
 import scipy.optimize as spo  # type: ignore
 from pathlib import Path
 from typing import NamedTuple, Any, TextIO
 from dataclasses import dataclass
 from multiprocessing import Pool
+from common.io import read_fcs
 
 ChannelMap = dict[tuple[str, str], str]
 
@@ -184,12 +183,10 @@ def get_flat_gates(
 
 
 def get_all_gates(c: RunConfig) -> RunResult:
-    # ASSUME all warnings are already triggered and captured elsewhere
-    with warnings.catch_warnings(action="ignore"):
-        fcs = fp.parse(c.path, channel_naming="$PnN")
+    parsed = read_fcs(c.path)
 
     min_events = get_min_events(c.params, c.sop)
-    t = fcs[1][c.channel]
+    t = parsed.events[c.channel]
     anomalies = get_anomalies(c.params, t)
 
     ano_gates = get_anomaly_gates(anomalies)

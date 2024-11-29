@@ -9,6 +9,10 @@ def lookup_maybe(k: X, xs: dict[X, Y]) -> Y | None:
     return xs[k] if k in xs else None
 
 
+def from_maybe(x: X, y: X | None) -> X:
+    return x if y is None else y
+
+
 def fmap_maybe(f: Callable[[X], Y], x: X | None) -> Y | None:
     return f(x) if x is not None else None
 

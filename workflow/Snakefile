@@ -77,7 +77,7 @@ rule find_time_issues:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/find_time_issues.py"
+        "scripts/python/fcs/find_time_issues.py"
 
 
 rule summarize_time_issues:
@@ -117,7 +117,7 @@ rule standardize_fcs:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/standardize_fcs.py"
+        "scripts/python/fcs/standardize_fcs.py"
 
 
 rule check_ranges:
@@ -131,7 +131,7 @@ rule check_ranges:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/check_ranges.py"
+        "scripts/python/fcs/check_ranges.py"
 
 
 rule summarize_clean_up:
