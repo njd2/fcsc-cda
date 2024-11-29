@@ -993,14 +993,6 @@ class WritableFCS(NamedTuple):
     events: pd.DataFrame
 
 
-def format_header(textlen: int) -> str:
-    # 6 bytes for version + 4 spaces + 8 byte fields for offsets (6 in total)
-    return (
-        f"FCS{Version.v3_1.value}    {HEADER_LENGTH:>8}{HEADER_LENGTH + textlen:>8}"
-        + EMPTY * 4
-    )
-
-
 def serialize_parameters(ps: list[ParamKeyword], delim: Delim) -> bytes:
     d = delim.to_bytes(1)
     return d.join(p.serialize(delim) for p in ps)
@@ -1093,6 +1085,8 @@ def write_fcs(
         if len(x) > 0
     )
 
+    # TODO if we are going to force 3.1 then we also technically should convert
+    # some 3.0 keywords to 3.1 (COMP -> SPILLOVER for instance)
     header_dataoffsets = serialize_header_and_data_offsets(
         Version.v3_1,
         len(new_text),

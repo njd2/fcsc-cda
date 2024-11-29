@@ -12,9 +12,13 @@ from common.io import (
     ParamIndex,
 )
 
+
 # Convert FCS files into "standard format" (as defined by this pipeline) which
 # includes filtering to "valid" events and choosing only the channels necessary
 # for downstream analysis.
+
+# these take lots of space and shouldn't be necessary to do anything important
+EXCLUDED_FIELDS = {"comp", "spillover", "unicode"}
 
 
 class ChannelNames(NamedTuple):
@@ -84,9 +88,6 @@ def format_parameters(
     new_params = reindexed + rebuilt
     new_params.sort(key=lambda x: (x.index_, x.ptype))
     return new_params
-
-
-EXCLUDED_FIELDS = {"comp", "spillover"}
 
 
 def standardize_fcs(c: RunConfig) -> None:
