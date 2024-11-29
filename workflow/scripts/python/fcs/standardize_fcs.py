@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import NamedTuple, Any
 from multiprocessing import Pool
 from common.io import (
+    Ptype,
     Delim,
     WritableFCS,
     ParsedEvents,
@@ -21,19 +22,19 @@ class ChannelNames(NamedTuple):
     short: str
     long: str
 
-    def _to_param(self, name: str, value: str) -> ParamKeyword:
+    def _to_param(self, name: Ptype, value: str) -> ParamKeyword:
         return ParamKeyword(self.param_index, name, value)
 
     def to_bits(self, bits: int) -> ParamKeyword:
-        return self._to_param("B", str(bits))
+        return self._to_param(Ptype.BITS, str(bits))
 
     @property
     def to_short(self) -> ParamKeyword:
-        return self._to_param("N", self.short)
+        return self._to_param(Ptype.NAME, self.short)
 
     @property
     def to_long(self) -> ParamKeyword:
-        return self._to_param("S", self.long)
+        return self._to_param(Ptype.LONGNAME, self.long)
 
 
 ChannelMap = dict[str, ChannelNames]
@@ -85,12 +86,16 @@ def format_parameters(
     return new_params
 
 
+EXCLUDED_FIELDS = {"comp", "spillover"}
+
+
 def standardize_fcs(c: RunConfig) -> None:
     def go(p: ParsedEvents) -> WritableFCS:
         new_df = p.events[c.start : c.end + 1][[*c.channel_map]]
         new_params = format_parameters(p.meta.params, c.channel_map, 32)
         other = {**{str(k): v for k, v in p.meta.deviant.items()}, **p.meta.nonstandard}
-        return WritableFCS(p.meta.standard.serializable, new_params, other, new_df)
+        meta = p.meta.standard.serializable(EXCLUDED_FIELDS)
+        return WritableFCS(meta, new_params, other, new_df)
 
     with_fcs(c.ipath, c.opath, go, Delim(30), False, 12)
 

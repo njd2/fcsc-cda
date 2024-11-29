@@ -580,10 +580,11 @@ class TabularTEXT31(_TabularTEXTCommon, _TEXT31, _IsTabulatable):
     def rowvalues(self) -> list[str]:
         return self._values_tabcommon + self._values_31
 
-    @property
-    def serializable(self) -> SerializableTEXT31:
+    def serializable(self, exclude: set[str]) -> SerializableTEXT31:
         m = self.dict()
-        return SerializableTEXT31(**{f: m[f] for f in SerializableTEXT31.__fields__})
+        return SerializableTEXT31(
+            **{f: m[f] for f in SerializableTEXT31.__fields__ if f not in exclude}
+        )
 
 
 class TabularTEXT30(_TabularTEXTCommon, _TEXT30, _IsTabulatable):
@@ -599,10 +600,11 @@ class TabularTEXT30(_TabularTEXTCommon, _TEXT30, _IsTabulatable):
     def rowvalues(self) -> list[str]:
         return self._values_tabcommon + self._values_30
 
-    @property
-    def serializable(self) -> SerializableTEXT30:
+    def serializable(self, exclude: set[str]) -> SerializableTEXT30:
         m = self.dict()
-        return SerializableTEXT30(**{f: m[f] for f in SerializableTEXT30.__fields__})
+        return SerializableTEXT30(
+            **{f: m[f] for f in SerializableTEXT30.__fields__ if f not in exclude}
+        )
 
 
 TabularTEXT = TabularTEXT30 | TabularTEXT31
@@ -933,9 +935,9 @@ def split_meta(meta: dict[str, Any]) -> tuple[FCSHeader, ParsedTEXT]:
     pat = version.choose(PARAM_RE_3_0, PARAM_RE_3_1)
     standard_fields = version.choose(StandardKeys30, StandardKeys31)
     # remove header, convert all keys to uppercase (keys are case-insensitive),
-    # and convert all values to strings
+    # and convert all values to strings and clean whitespace
     text = {
-        kbig: str(v)
+        kbig: str(v).strip()
         for k, v in meta.items()
         if not (k == "__header__" or re.match(RM_PAT, (kbig := k.upper())) is not None)
     }
