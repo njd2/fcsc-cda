@@ -170,6 +170,8 @@ BMSWarren	MQA10-2	HDR-T	time	Time
 CellBio	CellStream	Time	time	Time
 CellBio	CytoflexS	Time	time	Time
 FDACBER	AriaIII	Time	time	Time
+FDACBER	Canto10	Time	time	Time
+FDACBER	CantoII-1	Time	time	Time
 FDACBER	Fortessa	Time	time	Time
 ISAC	BRZE5	TIME	time	Time
 ISAC	CantoII-1	Time	time	Time
@@ -195,8 +197,6 @@ CellBio	CellStream	NA	ssc_a	SSC-A
 CellBio	CellStream	NA	fsc_a	FSC-A
 CellBio	CellStream	NA	ssc_h	SSC-H
 CellBio	CellStream	NA	fsc_h	FSC-H
-FDACBER	Canto10	Time	time	Time
-FDACBER	CantoII-1	Time	time	Time
 LMNXSEA	CellStream-1	NA	ssc_a	SSC-A
 LMNXSEA	CellStream-1	NA	fsc_a	FSC-A
 LMNXSEA	CellStream-1	NA	ssc_h	SSC-H
