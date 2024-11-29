@@ -1070,13 +1070,22 @@ def write_fcs(
         tot=nrow,
     )
 
-    # TODO ensure that PnB is always 32
+    # ensure bits are properly set for each field
+    new_params = [
+        (
+            ParamKeyword(p.index_, Ptype.BITS, str(event_width * 8))
+            if p.ptype is Ptype.BITS
+            else p
+        )
+        for p in p.params
+    ]
+
     new_text = xdelim.join(
         x
         for x in [
             required.serialize(delim),
             p.text.serialize(delim),
-            serialize_parameters(p.params, delim),
+            serialize_parameters(new_params, delim),
             serialize_keywords(p.other, delim),
         ]
         if len(x) > 0
