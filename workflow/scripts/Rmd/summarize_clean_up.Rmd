@@ -45,10 +45,10 @@ df_all_issues <- df_meta_issues %>%
   mutate(
     metadata_error = case_when(
       missing_file ~ "1 missing file",
-      has_multi_serial | has_multi_cytometer | has_multi_system ~ "2 muliple systems",
-      has_insufficient_events ~ "3 too few events",
-      has_voltage_variation | has_gain_variation ~ "4 voltage/gain variation",
-      TRUE ~ "5 no metadata error"
+      ## has_multi_serial | has_multi_cytometer | has_multi_system ~ "2 muliple systems",
+      has_insufficient_events ~ "2 too few events",
+      has_voltage_variation | has_gain_variation ~ "3 voltage/gain variation",
+      TRUE ~ "4 no metadata error"
     ) %>%
       factor() %>%
       fct_relabel(~ str_sub(.x, 3)),
@@ -56,9 +56,9 @@ df_all_issues <- df_meta_issues %>%
       metadata_error != "no metadata error" ~ "1 previous error",
       missing_time ~ "2 missing time channel" ,
       missing_scatter_area ~ "3 missing scatter area",
-      missing_scatter_height ~ "4 missing scatter height",
-      missing_colors ~ "5 missing color channel",
-      TRUE ~ "6 no channel error"
+      ## missing_scatter_height ~ "4 missing scatter height",
+      missing_colors ~ "4 missing color channel",
+      TRUE ~ "5 no channel error"
     ) %>%
       factor() %>%
       fct_relabel(~ str_sub(.x, 3)),
