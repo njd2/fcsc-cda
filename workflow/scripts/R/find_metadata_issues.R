@@ -157,6 +157,13 @@ gdiff_issue_indices <- df_voltgain_diff %>%
 # deal with time, scatter, and "color" separately since these all have different
 # failure modes
 
+df_allowed_missing_scatter <- df_channels %>%
+  filter(std_name %in% c("fsc_a", "ssc_a", "fsc_h", "ssc_h")) %>%
+  filter(is.na(machine_name)) %>%
+  select(org, machine) %>%
+  unique() %>%
+  add_column(scatter_can_be_missing = TRUE)
+
 df_file_channels <- df_params_std %>%
   pivot_wider(
     id_cols = c(file_index, org, machine),
@@ -164,11 +171,13 @@ df_file_channels <- df_params_std %>%
     values_from = param_index
   ) %>%
   right_join(select(df_meta, file_index), by = "file_index") %>%
+  left_join(df_allowed_missing_scatter, by = c("org", "machine")) %>%
+  replace_na(list(scatter_can_be_missing = FALSE)) %>%
   mutate(
     missing_time = is.na(time),
     missing_colors = if_any(c(v450, v500, fitc, pc55, pe, pc7, apc, ac7), is.na),
-    missing_scatter_area = if_any(c(fsc_a, ssc_a), is.na),
-    missing_scatter_height = if_any(c(fsc_h, ssc_h), is.na)
+    missing_scatter_area = if_any(c(fsc_a, ssc_a), is.na) & !scatter_can_be_missing,
+    missing_scatter_height = if_any(c(fsc_h, ssc_h), is.na) & !scatter_can_be_missing
   )
 
 df_file_channels %>%

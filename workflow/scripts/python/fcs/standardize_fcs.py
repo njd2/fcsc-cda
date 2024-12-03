@@ -41,15 +41,27 @@ class ChannelNames(NamedTuple):
         return self._to_param(Ptype.LONGNAME, self.long)
 
 
+class PreChannelNames(NamedTuple):
+    short: str
+    long: str
+
+    def add_index(self, i: int) -> ChannelNames:
+        return ChannelNames(ParamIndex(i), self.short, self.long)
+
+
 ChannelMap = dict[str, ChannelNames]
-OrgMachChannelMap = dict[tuple[str, str], ChannelMap]
+PreChannelMap = dict[str, PreChannelNames]
+OrgMachChannelMap = dict[tuple[str, str], PreChannelMap]
 TextKWs = dict[str, str]
 
 
 class RunConfig(NamedTuple):
     ipath: Path
     opath: Path
-    channel_map: ChannelMap
+    sop: int
+    eid: int
+    missing_scatter_height: bool
+    channel_map: PreChannelMap
     start: int
     end: int
 
@@ -92,8 +104,19 @@ def format_parameters(
 
 def standardize_fcs(c: RunConfig) -> None:
     def go(p: ParsedEvents) -> WritableFCS:
-        new_df = p.events[c.start : c.end + 1][[*c.channel_map]]
-        new_params = format_parameters(p.meta.params, c.channel_map, 32)
+        # remove height channels if this file used beads, or if they are missing
+        # from the FCS file (since this isn't fatal)
+        if c.sop == 1 or c.sop == 2 and c.eid != 1 or c.missing_scatter_height:
+            pm = {
+                k: v
+                for k, v in c.channel_map.items()
+                if v.short not in ["ssc_h", "fsc_h"]
+            }
+        else:
+            pm = c.channel_map
+        m = {k: v.add_index(i + 1) for i, (k, v) in enumerate(pm.items())}
+        new_df = p.events[c.start : c.end + 1][[*m]]
+        new_params = format_parameters(p.meta.params, m, 32)
         other = {**{str(k): v for k, v in p.meta.deviant.items()}, **p.meta.nonstandard}
         meta = p.meta.standard.serializable(EXCLUDED_FIELDS)
         return WritableFCS(meta, new_params, other, new_df)
@@ -104,7 +127,6 @@ def standardize_fcs(c: RunConfig) -> None:
 # ASSUME all the channels are in a standardized order
 def read_channel_mapping(p: Path) -> OrgMachChannelMap:
     acc: OrgMachChannelMap = {}
-    param_index = 1
     with open(p, "r") as f:
         # skip header
         next(f, None)
@@ -113,15 +135,17 @@ def read_channel_mapping(p: Path) -> OrgMachChannelMap:
             org = s[0]
             machine = s[1]
             machine_name = s[2]
+            # Missing machine names mean that this channel has no name, which
+            # is the case for the scatter channels of imaging cytometer. These
+            # should be removed since there is no channel to export.
+            if machine_name == "NA":
+                continue
             std_name = s[3]
             std_name_long = s[4]
             key = (org, machine)
             if key not in acc:
-                param_index = 1
                 acc[key] = {}
-            new = ChannelNames(ParamIndex(param_index), std_name, std_name_long)
-            acc[key][machine_name] = new
-            param_index = param_index + 1
+            acc[key][machine_name] = PreChannelNames(std_name, std_name_long)
     return acc
 
 
@@ -134,7 +158,16 @@ def main(smk: Any) -> None:
 
     out_dir = flag_out.parent
 
-    COLUMNS = ["org", "machine", "filepath", "start", "end"]
+    COLUMNS = [
+        "org",
+        "machine",
+        "sop",
+        "eid",
+        "filepath",
+        "start",
+        "end",
+        "missing_scatter_height",
+    ]
 
     ISSUE_COLUMNS = [
         "has_gain_variation",
@@ -142,7 +175,6 @@ def main(smk: Any) -> None:
         "missing_time",
         "missing_colors",
         "missing_scatter_area",
-        "missing_scatter_height",
     ]
 
     df_meta = pd.read_table(meta_in).set_index("file_index")
@@ -159,11 +191,16 @@ def main(smk: Any) -> None:
         RunConfig(
             (fp := Path(filepath)),
             out_dir / fp.name,
+            int(sop),
+            int(eid),
+            mi_sc_hght,
             om_channel_map[org, machine],
             start,
             end,
         )
-        for org, machine, filepath, start, end in df.itertuples(index=False)
+        for org, machine, sop, eid, filepath, start, end, mi_sc_hght in df.itertuples(
+            index=False
+        )
     ]
 
     with Pool(smk.threads) as p:
