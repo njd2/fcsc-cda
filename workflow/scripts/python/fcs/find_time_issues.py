@@ -63,17 +63,12 @@ class RunConfig(NamedTuple):
 class GateResult(NamedTuple):
     anomaly_gates: list[AnomalyGate]
     flat_gates: list[Gate]
-
-
-class ErrorResult(NamedTuple):
-    time: "pd.Series[float]"
-    ano_gates: list[AnomalyGate]
-    flat_gates: list[Gate]
+    time: "pd.Series[float] | None"
 
 
 class RunResult(NamedTuple):
     file_index: int
-    result: GateResult | ErrorResult
+    result: GateResult
 
 
 def get_min_events(p: Params, sop: int) -> MinEvents:
@@ -206,10 +201,10 @@ def get_all_gates(c: RunConfig) -> RunResult:
     anomalies = get_anomalies(c.params, t)
 
     ano_gates = get_anomaly_gates(anomalies, min_events)
-    # valid_ano_gates = [g for g in ano_gates if g.valid]
+    n_ano_valid = sum(g.valid for g in ano_gates)
 
-    if sum(g.valid for g in ano_gates) == 0:
-        res: GateResult | ErrorResult = ErrorResult(t, ano_gates, [])
+    if n_ano_valid == 0:
+        res = GateResult(ano_gates, [], t)
     else:
         t_clean = t[anomalies == 0]
         tdiff_clean = t_clean - t_clean.shift(1)
@@ -221,10 +216,13 @@ def get_all_gates(c: RunConfig) -> RunResult:
                 c.params, ag.start, ag.end, tdiff_clean, min_events
             )
         ]
-        if sum(g.valid for g in flat_gates) == 0:
-            res = ErrorResult(t, ano_gates, flat_gates)
-        else:
-            res = GateResult(ano_gates, flat_gates)
+        n_flat_valid = sum(g.valid for g in flat_gates)
+        n_total = len(flat_gates) + len(ano_gates) - n_ano_valid
+        res = GateResult(
+            ano_gates,
+            flat_gates,
+            t if n_flat_valid == 0 or n_total > 1 else None,
+        )
     return RunResult(c.file_index, res)
 
 
@@ -288,28 +286,23 @@ def main(smk: Any) -> None:
             def write_tsv_line(b: TextIO, xs: list[Any]) -> None:
                 b.write("\t".join([fi, *[str(x) for x in xs]]) + "\n")
 
-            if isinstance(res, GateResult):
-                for ag in res.anomaly_gates:
-                    write_tsv_line(ao, [ag.start, ag.end, ag.anomaly, ag.valid])
-                for fg in res.flat_gates:
-                    write_tsv_line(fo, [fg.start, fg.end, fg.valid])
-                # last gate in the flat series is the longest, so use that one
-                g0 = next(
-                    iter(
-                        sorted(
-                            (g for g in res.flat_gates if g.valid),
-                            key=lambda g: -g.length,
-                        )
-                    ),
-                    None,
-                )
-                if g0 is not None:
-                    write_tsv_line(to, [g0.start, g0.end])
-            else:
-                for ag in res.ano_gates:
-                    write_tsv_line(ao, [ag.start, ag.end, ag.anomaly, ag.valid])
-                for fg in res.flat_gates:
-                    write_tsv_line(fo, [fg.start, fg.end, fg.valid])
+            for ag in res.anomaly_gates:
+                write_tsv_line(ao, [ag.start, ag.end, ag.anomaly, ag.valid])
+            for fg in res.flat_gates:
+                write_tsv_line(fo, [fg.start, fg.end, fg.valid])
+            # last gate in the flat series is the longest, so use that one
+            g0 = next(
+                iter(
+                    sorted(
+                        (g for g in res.flat_gates if g.valid),
+                        key=lambda g: -g.length,
+                    )
+                ),
+                None,
+            )
+            if g0 is not None:
+                write_tsv_line(to, [g0.start, g0.end])
+            if res.time is not None:
                 for ei, t in res.time.items():
                     write_tsv_line(eo, [ei, t])
 

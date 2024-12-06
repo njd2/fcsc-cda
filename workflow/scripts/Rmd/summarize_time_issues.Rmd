@@ -11,25 +11,28 @@ library(scattermore)
 
 knitr::opts_chunk$set(fig.width=8, fig.height=4, fig_caption=TRUE)
 
+process_gates <- function(df, gt) {
+  df %>%
+    group_by(file_index) %>%
+    mutate(novalid = sum(valid) == 0) %>%
+    mutate(hasgates = n() > 1) %>%
+    ungroup() %>%
+    add_column(gate_type = gt)
+}
+
 df_ano <- read_tsv(
   snakemake@input[["anomaly"]],
-  col_types = "ii--l",
-  col_names = c("file_index", "start", "valid")
+  col_types = "iii-l",
+  col_names = c("file_index", "start", "end", "valid")
 ) %>%
-  group_by(file_index) %>%
-  mutate(novalid = sum(valid) == 0) %>%
-  filter(novalid) %>%
-  ungroup()
+  process_gates("anomaly")
 
 df_flat <- read_tsv(
   snakemake@input[["flat"]],
-  col_types = "ii-l",
-  col_names = c("file_index", "start", "valid")
+  col_types = "iiil",
+  col_names = c("file_index", "start", "end", "valid")
 ) %>%
-  group_by(file_index) %>%
-  mutate(novalid = sum(valid) == 0) %>%
-  filter(novalid) %>%
-  ungroup()
+  process_gates("flow rate")
 
 # ASSUME these are sorted by file/event index
 df_events <- read_tsv(
@@ -37,7 +40,6 @@ df_events <- read_tsv(
   col_types = "iid",
   col_names = c("file_index", "event_index", "time")
 )
-  ## mutate(passed_anomaly = file_index %in% anomaly_indices)
 
 df_meta <- read_tsv(
   snakemake@input[["meta"]],
@@ -53,7 +55,7 @@ df_meta <- read_tsv(
   )
 )
 
-make_plot <- function(df_gates, key) {
+make_plot <- function(df_gates, key, both) {
   i <- key$file_index[[1]]
   m <- df_meta %>%
     filter(file_index == i) %>%
@@ -67,9 +69,31 @@ make_plot <- function(df_gates, key) {
   p <- df_events %>%
     filter(file_index == i) %>%
     ggplot(aes(event_index, time)) +
-    geom_scattermore(pointsize=2) +
-    labs(x = "Event", y = "Time Channel")
-  print(p)
+    geom_scattermore(pointsize=2)
+  # TODO add colors for each gate type
+  if (FALSE) {
+    rest <- list(
+      geom_rect(
+        data = df_gates,
+        aes(xmin = start, xmax = end, ymin = 0, ymax = Inf, fill = gate_type),
+        alpha = 0.2,
+        inherit.aes = FALSE
+      ),
+      scale_fill_discrete(drop = FALSE),
+      labs(x = "Event", y = "Time Channel", fill = "Gate Type")
+    )
+  } else {
+    rest <- list(
+      geom_vline(
+        data = slice_tail(df_gates, n = -1),
+        aes(xintercept = start),
+        color = "red",
+        linetype = "dashed"
+      ),
+      labs(x = "Event", y = "Time Channel")
+    )
+  }
+  print(p + rest)
   cat("\n\n")
 }
 
@@ -78,10 +102,12 @@ make_plot <- function(df_gates, key) {
 The following are the time channels of the FCS files with detected issues 
 (further elaborated below).
 
+# Invalid Files
+
 In each of these cases, the minimum nunmber of required events was not
 achieved after trying to gate around these issues.
 
-# Files with anomalies
+## Files with anomalies
 
 These files have one or both of these issues:
 
@@ -95,10 +121,10 @@ These files have one or both of these issues:
 df_ano %>%
   filter(novalid) %>%
   group_by(file_index) %>%
-  group_walk(make_plot)
+  group_walk(~ make_plot(.x, .y, FALSE))
 ```
 
-# Files with non-linearity
+## Files with non-linearity
 
 These files have large deviations in flow rate somewhere in the middle.
 
@@ -106,5 +132,23 @@ These files have large deviations in flow rate somewhere in the middle.
 df_flat %>%
   filter(novalid) %>%
   group_by(file_index) %>%
-  group_walk(make_plot)
+  group_walk(~ make_plot(.x, .y, FALSE))
+```
+
+# Valid Files
+
+These are files that have at least one gate but exceeded the minimum event
+count in at least one gate.
+
+```{r, echo = FALSE, results = "asis"}
+bind_rows(
+  df_flat,
+  df_ano
+) %>%
+  mutate(gate_type = factor(gate_type)) %>%
+  filter(!novalid) %>%
+  filter(hasgates) %>%
+  arrange(file_index) %>%
+  group_by(file_index) %>%
+  group_walk(~ make_plot(.x, .y, TRUE))
 ```
