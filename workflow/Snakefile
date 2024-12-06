@@ -85,6 +85,7 @@ rule summarize_time_issues:
         meta=rules.read_fcs_meta.output.meta,
         events=rules.find_time_issues.output.events,
         anomaly=rules.find_time_issues.output.anomaly,
+        flat=rules.find_time_issues.output.flat,
     output:
         res_final / "time_issues_summary.html",
     conda:

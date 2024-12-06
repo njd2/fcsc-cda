@@ -11,15 +11,33 @@ library(scattermore)
 
 knitr::opts_chunk$set(fig.width=8, fig.height=4, fig_caption=TRUE)
 
-anomaly_indices <- unique(read_tsv(snakemake@input[["anomaly"]], col_types = "i---")[[1]])
+df_ano <- read_tsv(
+  snakemake@input[["anomaly"]],
+  col_types = "ii--l",
+  col_names = c("file_index", "start", "valid")
+) %>%
+  group_by(file_index) %>%
+  mutate(novalid = sum(valid) == 0) %>%
+  filter(novalid) %>%
+  ungroup()
+
+df_flat <- read_tsv(
+  snakemake@input[["flat"]],
+  col_types = "ii-l",
+  col_names = c("file_index", "start", "valid")
+) %>%
+  group_by(file_index) %>%
+  mutate(novalid = sum(valid) == 0) %>%
+  filter(novalid) %>%
+  ungroup()
 
 # ASSUME these are sorted by file/event index
 df_events <- read_tsv(
   snakemake@input[["events"]],
   col_types = "iid",
   col_names = c("file_index", "event_index", "time")
-) %>%
-  mutate(passed_anomaly = file_index %in% anomaly_indices)
+)
+  ## mutate(passed_anomaly = file_index %in% anomaly_indices)
 
 df_meta <- read_tsv(
   snakemake@input[["meta"]],
@@ -35,8 +53,8 @@ df_meta <- read_tsv(
   )
 )
 
-make_plot <- function(df_events, key) {
-  i <- key$file_index
+make_plot <- function(df_gates, key) {
+  i <- key$file_index[[1]]
   m <- df_meta %>%
     filter(file_index == i) %>%
     head(n = 1)
@@ -47,6 +65,7 @@ make_plot <- function(df_events, key) {
   cat(sprintf("Rep = %d\n\n", m$rep))
   cat(sprintf("Material = %s\n\n", m$material))
   p <- df_events %>%
+    filter(file_index == i) %>%
     ggplot(aes(event_index, time)) +
     geom_scattermore(pointsize=2) +
     labs(x = "Event", y = "Time Channel")
@@ -73,8 +92,8 @@ These files have one or both of these issues:
   indicates a clog or bubble
 
 ```{r, echo = FALSE, results = "asis"}
-df_events %>%
-  filter(!passed_anomaly) %>%
+df_ano %>%
+  filter(novalid) %>%
   group_by(file_index) %>%
   group_walk(make_plot)
 ```
@@ -84,8 +103,8 @@ df_events %>%
 These files have large deviations in flow rate somewhere in the middle.
 
 ```{r, echo = FALSE, results = "asis"}
-df_events %>%
-  filter(passed_anomaly) %>%
+df_flat %>%
+  filter(novalid) %>%
   group_by(file_index) %>%
   group_walk(make_plot)
 ```
