@@ -49,7 +49,7 @@ df_meta <- read_tsv(
     file_index = "i",
     material = "c",
     sop = "i",
-    exp = "i",
+    eid = "i",
     rep = "i",
     .default = "-"
   )
@@ -63,7 +63,7 @@ make_plot <- function(df_gates, key, both) {
   cat(sprintf("### %s - %s\n\n", m$org, m$machine))
   cat(sprintf("File Index = %d\n\n", i))
   cat(sprintf("SOP = %d\n\n", m$sop))
-  cat(sprintf("Experiment = %d\n\n", m$exp))
+  cat(sprintf("Experiment = %d\n\n", m$eid))
   cat(sprintf("Rep = %d\n\n", m$rep))
   cat(sprintf("Material = %s\n\n", m$material))
   p <- df_events %>%
