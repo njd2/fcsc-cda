@@ -5,23 +5,26 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as spo  # type: ignore
 from pathlib import Path
-from typing import NamedTuple, Any, TextIO
+from typing import NamedTuple, Any, TextIO, NewType
 from dataclasses import dataclass
 from multiprocessing import Pool
 from common.io import read_fcs
 
 ChannelMap = dict[tuple[str, str], str]
+MinEvents = NewType("MinEvents", int)
+I0 = NewType("I0", int)
+I1 = NewType("I1", int)
 
 
-class MinEvents(NamedTuple):
-    sop1: int
-    sop2: int
-    sop3: int
+class MinEventsSOP(NamedTuple):
+    sop1: MinEvents
+    sop2: MinEvents
+    sop3: MinEvents
 
 
 # Reader Monad ;)
 class Params(NamedTuple):
-    min_events: MinEvents
+    min_events: MinEventsSOP
     spike_limit: float
     gap_limit: float
     non_mono_limit: float
@@ -31,8 +34,13 @@ class Params(NamedTuple):
 
 @dataclass(frozen=True)
 class Gate:
-    start: int
-    end: int
+    start: I0
+    end: I1
+    min_events: MinEvents
+
+    @property
+    def valid(self) -> int:
+        return self.length >= self.min_events
 
     @property
     def length(self) -> int:
@@ -67,7 +75,7 @@ class RunResult(NamedTuple):
     result: GateResult | ErrorResult
 
 
-def get_min_events(p: Params, sop: int) -> int:
+def get_min_events(p: Params, sop: int) -> MinEvents:
     m = p.min_events
     if sop == 1:
         return m.sop1
@@ -104,17 +112,20 @@ def get_anomalies(p: Params, t: "pd.Series[float]") -> npt.NDArray[np.int64]:
     )
 
 
-def get_anomaly_gates(anomalies: npt.NDArray[np.int64]) -> list[AnomalyGate]:
+def get_anomaly_gates(
+    anomalies: npt.NDArray[np.int64],
+    n: MinEvents,
+) -> list[AnomalyGate]:
     total = anomalies.size
     if anomalies.sum() == 0:
-        return [AnomalyGate(0, total - 1, None)]
+        return [AnomalyGate(I0(0), I1(total - 1), n, None)]
     else:
         mask = anomalies > 1
         anomaly_positions = np.where(mask)[0].tolist()
         starts: list[int] = [0, *anomaly_positions]
         ends: list[int] = [*anomaly_positions, total - 1]
         codes: list[int | None] = [*anomalies[mask].tolist(), None]
-        return [AnomalyGate(s, e, c) for s, e, c in zip(starts, ends, codes)]
+        return [AnomalyGate(I0(s), I1(e), n, c) for s, e, c in zip(starts, ends, codes)]
 
 
 def ss(xs: "pd.Series[float]") -> float:
@@ -170,16 +181,20 @@ def find_flat(
 
 
 def get_flat_gates(
-    p: Params, i0: int, i1: int, tdiff: "pd.Series[float]"
+    p: Params,
+    i0: I0,
+    i1: I1,
+    tdiff: "pd.Series[float]",
+    n: MinEvents,
 ) -> list[Gate]:
     # NOTE add 1 since the first diff value for this gate is not differentiable
     gates = find_flat(p, [], i0 + 1, i1, tdiff)
     if len(gates) == 0:
-        return [Gate(i0, i1)]
+        return [Gate(i0, i1, n)]
     else:
         starts = [i0, *gates]
         ends = [*gates, i1]
-        return [Gate(s, e) for s, e in zip(starts, ends)]
+        return [Gate(I0(s), I1(e), n) for s, e in zip(starts, ends)]
 
 
 def get_all_gates(c: RunConfig) -> RunResult:
@@ -189,8 +204,8 @@ def get_all_gates(c: RunConfig) -> RunResult:
     t = parsed.events[c.channel]
     anomalies = get_anomalies(c.params, t)
 
-    ano_gates = get_anomaly_gates(anomalies)
-    valid_ano_gates = [g for g in ano_gates if g.length >= min_events]
+    ano_gates = get_anomaly_gates(anomalies, min_events)
+    valid_ano_gates = [g for g in ano_gates if g.valid]
 
     if len(valid_ano_gates) == 0:
         res: GateResult | ErrorResult = ErrorResult(t, [])
@@ -200,8 +215,10 @@ def get_all_gates(c: RunConfig) -> RunResult:
         flat_gates = [
             fg
             for ag in valid_ano_gates
-            for fg in get_flat_gates(c.params, ag.start, ag.end, tdiff_clean)
-            if fg.length >= min_events
+            for fg in get_flat_gates(
+                c.params, ag.start, ag.end, tdiff_clean, min_events
+            )
+            if fg.valid
         ]
         if len(flat_gates) == 0:
             res = ErrorResult(t, valid_ano_gates)
@@ -217,7 +234,7 @@ def main(smk: Any) -> None:
     me = sp["min_events"]
     tl = sp["time_limits"]
     params = Params(
-        min_events=MinEvents(
+        min_events=MinEventsSOP(
             sop1=me["sop1"],
             sop2=me["sop2"],
             sop3=me["sop3"],
