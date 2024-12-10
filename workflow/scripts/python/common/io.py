@@ -664,7 +664,7 @@ class Ptype(StrEnum):
     @classmethod
     def _build_param_re(self, xs: set[str]) -> re.Pattern[str]:
         # ASSUME this will match a standard key which is in uppercase
-        return re.compile(f"\\$P([0-9]+)({"|".join(xs)})")
+        return re.compile(f"^\\$P([0-9]+)({"|".join(xs)})$")
 
     @classmethod
     def re30(self) -> re.Pattern[str]:
