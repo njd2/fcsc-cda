@@ -51,7 +51,7 @@ rule find_metadata_issues:
         voltgain=res_meta_issues / "voltage_gain.tsv.gz",
         channels=res_meta_issues / "missing_channels.tsv.gz",
         issues=res_meta_issues / "all_issues.tsv.gz",
-        clean=res_meta_issues / "clean.tsv.gz",
+        # clean=res_meta_issues / "clean.tsv.gz",
     params:
         min_events=config["min_events"],
         detector_limits=config["detector_limits"],

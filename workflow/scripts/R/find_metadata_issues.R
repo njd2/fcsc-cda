@@ -37,7 +37,13 @@ df_combos <- read_tsv(
         eid == 4 ~ "SOP 3: QC Pheno"
       )
     )
+  ) %>%
+  # Matrix 2/3 and the cryoPBMC test panels are required for the dataset to
+  # be considered "complete"
+  mutate(
+    required = (sop == 2 & eid != 1) | (sop == 3 & eid == 1)
   )
+
 
 df_meta <- read_tsv(
   snakemake@input[["meta"]],
@@ -199,6 +205,7 @@ df_multi_issues <- df_meta %>%
 df_issues <- df_combos %>%
   left_join(df_meta, by = c("org", "machine", "sop", "eid", "rep", "material")) %>%
   mutate(
+    missing_file = is.na(file_index),
     min_events = case_when(
       sop == 1 ~ MIN_EVENT_SOP1,
       sop == 2 ~ MIN_EVENT_SOP2,
@@ -206,32 +213,39 @@ df_issues <- df_combos %>%
     ),
     has_voltage_variation = file_index %in% vdiff_issue_indices,
     has_gain_variation = file_index %in% gdiff_issue_indices,
-    missing_events = tot - min_events,
-    percent_complete = tot / min_events * 100
+    percent_complete = tot / min_events * 100,
+    has_insufficient_events = percent_complete < 100
   ) %>%
   left_join(df_multi_issues, by = "file_index") %>%
   left_join(df_file_channels_short, by = "file_index") %>%
   group_by(org, machine) %>%
+  mutate(has_incomplete_set = sum(is.na(filepath) & required) > 0) %>%
   ungroup() %>%
-  relocate(file_index, org, machine, material, sop, eid, rep, om, group) %>%
+  select(
+    file_index, org, machine, material, sop, eid, rep, om, group, filepath,
+    percent_complete, missing_file, has_voltage_variation, has_gain_variation,
+    has_insufficient_events, has_multi_serial, has_multi_cytometer,
+    has_multi_system, missing_time, missing_colors, missing_scatter_area,
+    missing_scatter_height, has_incomplete_set
+  ) %>%
   arrange(file_index)
 
 df_issues %>%
   write_tsv(snakemake@output[["issues"]])
 
-df_issues %>%
-  filter(
-    !(
-      has_voltage_variation |
-        has_gain_variation |
-        percent_complete < 100 |
-        ## has_multi_serial |
-        ## has_multi_cytometer |
-        ## has_multi_system |
-        missing_time |
-        missing_colors |
-        missing_scatter_area |
-        missing_scatter_height
-    )
-  ) %>%
-  write_tsv(snakemake@output[["clean"]])
+## df_issues %>%
+##   filter(
+##     !(
+##       has_voltage_variation |
+##         has_gain_variation |
+##         percent_complete < 100 |
+##         ## has_multi_serial |
+##         ## has_multi_cytometer |
+##         ## has_multi_system |
+##         missing_time |
+##         missing_colors |
+##         missing_scatter_area |
+##         missing_scatter_height
+##     )
+##   ) %>%
+##   write_tsv(snakemake@output[["clean"]])
