@@ -12,10 +12,13 @@ from common.io import (
     ParamIndex,
 )
 
+# Convert FCS files to standardized format including:
+# - standardizing channel names
+# - removing extra channels
+# - exporting to FCS3.1 format
+# - saving all data as 32-bit floats
+# - removing compensation matrices (which should be meaningless at this stage)
 
-# Convert FCS files into "standard format" (as defined by this pipeline) which
-# includes filtering to "valid" events and choosing only the channels necessary
-# for downstream analysis.
 
 # these take lots of space and shouldn't be necessary to do anything important
 EXCLUDED_FIELDS = {"comp", "spillover", "unicode"}
@@ -169,13 +172,11 @@ def main(smk: Any) -> None:
         "missing_scatter_height",
     ]
 
-    ISSUE_COLUMNS = [
-        "has_gain_variation",
-        "has_voltage_variation",
-        "missing_time",
-        "missing_colors",
-        "missing_scatter_area",
-    ]
+    # Skip files for which the channel definitions are not complete. We also
+    # skip files that don't have "height" scatter channels but whether this is
+    # a real issue depends on the type of file, so deal with that using more
+    # complex logic compared to this dumb filter.
+    ISSUE_COLUMNS = ["missing_time", "missing_colors", "missing_scatter_area"]
 
     df_meta = pd.read_table(meta_in).set_index("file_index")
     df_top_gates = pd.read_table(
