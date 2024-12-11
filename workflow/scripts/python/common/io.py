@@ -1074,15 +1074,18 @@ def write_fcs(
         for p in p.params
     ]
 
-    new_text = xdelim.join(
-        x
-        for x in [
-            required.serialize(delim),
-            p.text.serialize(delim),
-            serialize_parameters(new_params, delim),
-            serialize_keywords(p.other, delim),
-        ]
-        if len(x) > 0
+    new_text = (
+        xdelim.join(
+            x
+            for x in [
+                required.serialize(delim),
+                p.text.serialize(delim),
+                serialize_parameters(new_params, delim),
+                serialize_keywords(p.other, delim),
+            ]
+            if len(x) > 0
+        )
+        + xdelim
     )
 
     # TODO if we are going to force 3.1 then we also technically should convert
