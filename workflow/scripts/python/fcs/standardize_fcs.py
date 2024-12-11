@@ -143,8 +143,8 @@ def read_channel_mapping(p: Path) -> OrgMachChannelMap:
             # should be removed since there is no channel to export.
             if machine_name == "NA":
                 continue
-            std_name = s[3]
-            std_name_long = s[4]
+            std_name = s[3].strip()
+            std_name_long = s[4].strip()
             key = (org, machine)
             if key not in acc:
                 acc[key] = {}
