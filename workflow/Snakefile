@@ -121,6 +121,21 @@ rule standardize_fcs:
         "scripts/python/fcs/standardize_fcs.py"
 
 
+rule compute_channel_entropies:
+    input:
+        rules.standardize_fcs.output,
+    output:
+        res_int / "channel_qc" / "entropy.tsv.gz",
+    threads: 20
+    params:
+        embedding_sizes=[3, 5, 7],
+        delays=[1],
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/compute_perm_entropy.py"
+
+
 rule check_ranges:
     input:
         rules.aggregate_clean_up_errors.output,
@@ -158,3 +173,4 @@ rule all:
         rules.summarize_clean_up.output,
         rules.standardize_fcs.output,
         rules.check_ranges.output,
+        rules.compute_channel_entropies.output,

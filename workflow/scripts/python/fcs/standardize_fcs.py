@@ -59,6 +59,7 @@ TextKWs = dict[str, str]
 
 
 class RunConfig(NamedTuple):
+    file_index: int
     ipath: Path
     opath: Path
     sop: int
@@ -190,6 +191,7 @@ def main(smk: Any) -> None:
 
     runs = [
         RunConfig(
+            int(i),
             (fp := Path(filepath)),
             out_dir / fp.name,
             int(sop),
@@ -199,8 +201,8 @@ def main(smk: Any) -> None:
             start,
             end,
         )
-        for org, machine, sop, eid, filepath, start, end, mi_sc_hght in df.itertuples(
-            index=False
+        for i, org, machine, sop, eid, filepath, start, end, mi_sc_hght in df.itertuples(
+            index=True
         )
     ]
 
@@ -208,7 +210,9 @@ def main(smk: Any) -> None:
         p.map(standardize_fcs, runs)
         # list(map(standardize_fcs, [runs[0]]))
 
-    flag_out.touch()
+    with open(flag_out, "wt") as f:
+        for r in runs:
+            f.write("\t".join([str(r.file_index), str(r.opath)]) + "\n")
 
 
 main(snakemake)  # type: ignore
