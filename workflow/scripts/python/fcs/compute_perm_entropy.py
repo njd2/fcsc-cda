@@ -74,7 +74,10 @@ def main(smk: Any) -> None:
 
     with gzip.open(entropy_out, "wt") as o:
         for r in results:
-            o.write("\t".join(map(str, [*r])) + "\n")
+            i = r.file_index
+            es = r.result
+            for e in es:
+                o.write("\t".join(map(str, [i, *e])) + "\n")
 
 
 main(snakemake)  # type: ignore

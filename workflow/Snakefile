@@ -121,26 +121,13 @@ rule standardize_fcs:
         "scripts/python/fcs/standardize_fcs.py"
 
 
-rule compute_channel_entropies:
+rule remove_edge_events:
     input:
         rules.standardize_fcs.output,
     output:
-        res_int / "channel_qc" / "entropy.tsv.gz",
+        results=res_range / "overrange.tsv.gz",
+        files=res_int / "truncated" / "files.tsv",
     threads: 20
-    params:
-        embedding_sizes=[3, 5, 7],
-        delays=[1],
-    conda:
-        "envs/fcs.yml"
-    script:
-        "scripts/python/fcs/compute_perm_entropy.py"
-
-
-rule check_ranges:
-    input:
-        rules.aggregate_clean_up_errors.output,
-    output:
-        res_range / "overrange.tsv.gz",
     params:
         clean_dir=res_clean,
         thresh=0.99,
@@ -150,11 +137,26 @@ rule check_ranges:
         "scripts/python/fcs/check_ranges.py"
 
 
+rule compute_channel_entropies:
+    input:
+        rules.remove_edge_events.output.files,
+    output:
+        res_int / "channel_qc" / "entropy.tsv.gz",
+    threads: 20
+    params:
+        embedding_sizes=[3, 5],
+        delays=[1],
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/compute_perm_entropy.py"
+
+
 rule summarize_clean_up:
     input:
         issues=rules.aggregate_clean_up_errors.output,
         voltgain=rules.find_metadata_issues.output.voltgain,
-        ranges=rules.check_ranges.output,
+        ranges=rules.remove_edge_events.output.results,
     output:
         res_final / "clean_up_summary.html",
     params:
@@ -172,5 +174,4 @@ rule all:
         rules.summarize_time_issues.output,
         rules.summarize_clean_up.output,
         rules.standardize_fcs.output,
-        rules.check_ranges.output,
         rules.compute_channel_entropies.output,
