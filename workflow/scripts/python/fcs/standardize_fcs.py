@@ -66,8 +66,6 @@ class RunConfig(NamedTuple):
     eid: int
     missing_scatter_height: bool
     channel_map: PreChannelMap
-    start: int
-    end: int
 
 
 def format_parameters(
@@ -119,7 +117,7 @@ def standardize_fcs(c: RunConfig) -> None:
         else:
             pm = c.channel_map
         m = {k: v.add_index(i + 1) for i, (k, v) in enumerate(pm.items())}
-        new_df = p.events[c.start : c.end + 1][[*m]]
+        new_df = p.events[[*m]]
         new_params = format_parameters(p.meta.params, m, 32)
         other = {**{str(k): v for k, v in p.meta.deviant.items()}, **p.meta.nonstandard}
         meta = p.meta.standard.serializable(EXCLUDED_FIELDS)
@@ -154,7 +152,6 @@ def read_channel_mapping(p: Path) -> OrgMachChannelMap:
 
 
 def main(smk: Any) -> None:
-    top_gates_in = Path(smk.input["top"])
     channels_in = Path(smk.input["channels"])
     meta_in = Path(smk.input["meta"])
 
@@ -168,8 +165,6 @@ def main(smk: Any) -> None:
         "sop",
         "eid",
         "filepath",
-        "start",
-        "end",
         "missing_scatter_height",
     ]
 
@@ -177,14 +172,18 @@ def main(smk: Any) -> None:
     # skip files that don't have "height" scatter channels but whether this is
     # a real issue depends on the type of file, so deal with that using more
     # complex logic compared to this dumb filter.
-    ISSUE_COLUMNS = ["missing_time", "missing_colors", "missing_scatter_area"]
+    ISSUE_COLUMNS = [
+        "missing_file",
+        "has_voltage_variation",
+        "has_gain_variation",
+        "has_insufficient_events",
+        "missing_time",
+        "missing_colors",
+        "missing_scatter_area",
+        "has_incomplete_set",
+    ]
 
-    df_meta = pd.read_table(meta_in).set_index("file_index")
-    df_top_gates = pd.read_table(
-        top_gates_in, names=["file_index", "start", "end"]
-    ).set_index("file_index")
-
-    df = df_top_gates.join(df_meta)
+    df = pd.read_table(meta_in).set_index("file_index")
     df = df[~df[ISSUE_COLUMNS].any(axis=1)][COLUMNS]
 
     om_channel_map = read_channel_mapping(channels_in)
@@ -198,12 +197,8 @@ def main(smk: Any) -> None:
             int(eid),
             mi_sc_hght,
             om_channel_map[org, machine],
-            start,
-            end,
         )
-        for i, org, machine, sop, eid, filepath, start, end, mi_sc_hght in df.itertuples(
-            index=True
-        )
+        for i, org, machine, sop, eid, filepath, mi_sc_hght in df.itertuples(index=True)
     ]
 
     with Pool(smk.threads) as p:

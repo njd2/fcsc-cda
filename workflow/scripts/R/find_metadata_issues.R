@@ -219,7 +219,12 @@ df_issues <- df_combos %>%
   left_join(df_multi_issues, by = "file_index") %>%
   left_join(df_file_channels_short, by = "file_index") %>%
   group_by(org, machine) %>%
-  mutate(has_incomplete_set = sum(is.na(filepath) & required) > 0) %>%
+  mutate(
+    has_incomplete_set = sum(missing_file & required) > 0 |
+      sum(has_voltage_variation & required) > 0 |
+      sum(has_gain_variation & required) > 0 |
+      sum(has_insufficient_events & required) > 0
+  ) %>%
   ungroup() %>%
   select(
     file_index, org, machine, material, sop, eid, rep, om, group, filepath,

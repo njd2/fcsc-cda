@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from multiprocessing import Pool
 from common.io import read_fcs
 
-ChannelMap = dict[tuple[str, str], str]
 MinEvents = NewType("MinEvents", int)
 I0 = NewType("I0", int)
 I1 = NewType("I1", int)
@@ -56,7 +55,6 @@ class RunConfig(NamedTuple):
     params: Params
     file_index: int
     path: Path
-    channel: str
     sop: int
 
 
@@ -82,14 +80,6 @@ def get_min_events(p: Params, sop: int) -> MinEvents:
     else:
         # TODO make this cleaner
         raise ValueError("Invalid SOP")
-
-
-def read_time_channel_mapping(p: Path) -> ChannelMap:
-    with open(p, "r") as f:
-        next(f, None)
-        return {
-            (s[0], s[1]): s[2] for x in f if (s := x.rstrip().split("\t"))[3] == "time"
-        }
 
 
 def get_anomalies(p: Params, t: "pd.Series[float]") -> npt.NDArray[np.int64]:
@@ -197,7 +187,7 @@ def get_all_gates(c: RunConfig) -> RunResult:
     parsed = read_fcs(c.path)
 
     min_events = get_min_events(c.params, c.sop)
-    t = parsed.events[c.channel]
+    t = parsed.events["time"]
     anomalies = get_anomalies(c.params, t)
 
     ano_gates = get_anomaly_gates(anomalies, min_events)
@@ -242,31 +232,25 @@ def main(smk: Any) -> None:
         rate_thresh=math.log10(100 / tl["rate_thresh"]),
         min_size=tl["min_size"],
     )
-    channel_in = Path(smk.input["channels"])
     meta_in = Path(smk.input["meta"])
+    files_in = Path(smk.input["files"])
 
     anomaly_out = Path(smk.output["anomaly"])
     flat_out = Path(smk.output["flat"])
     top_out = Path(smk.output["top"])
     event_out = Path(smk.output["events"])
 
-    channels = read_time_channel_mapping(channel_in)
+    META_COLUMNS = ["file_index", "sop"]
 
-    META_COLUMNS = [
-        "file_index",
-        "org",
-        "machine",
-        "sop",
-        "filepath",
-        "missing_time",
-        "percent_complete",
-    ]
-
-    df = pd.read_table(meta_in)[META_COLUMNS]
+    df_files = pd.read_table(
+        files_in,
+        names=["file_index", "filepath"],
+    ).set_index("file_index")
+    df_meta = pd.read_table(meta_in)[META_COLUMNS].set_index("file_index")
+    df = df_files.join(df_meta)
     runs = [
-        RunConfig(params, i, Path(p), channels[(o, m)], s)
-        for i, o, m, s, p, no_time, complete in df.itertuples(index=False)
-        if i is not None and no_time is False and complete >= 100
+        RunConfig(params, int(file_index), Path(filepath), int(sop))
+        for file_index, filepath, sop in df.itertuples(index=True)
     ]
 
     # weeeeeeeee

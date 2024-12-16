@@ -1,4 +1,3 @@
-import gzip
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -56,21 +55,18 @@ def check_ranges(r: Run) -> list[Result]:
 
 
 def main(smk: Any) -> None:
-    thresh = smk.params["thresh"]
-    clean_dir = Path(smk.params["clean_dir"])
+    thresh = smk.params["edge_thresh"]
     inpath = Path(smk.input[0])
     files_opath = Path(smk.output["files"])
     results_opath = Path(smk.output["results"])
 
+    old_dir = inpath.parent
+    new_dir = files_opath.parent
+
     df = pd.read_table(inpath)
 
     runs = [
-        Run(
-            int(x[0]),
-            clean_dir / (n := Path(x[1]).name),
-            files_opath.parent / n,
-            thresh,
-        )
+        Run(int(x[0]), old_dir / (n := Path(x[1]).name), new_dir / n, thresh)
         for x in df.itertuples(index=False)
     ]
 
@@ -80,7 +76,7 @@ def main(smk: Any) -> None:
     flat_results = [y for xs in results for y in xs]
     flat_results.sort(key=lambda x: (x.file_index, x.channel))
 
-    with gzip.open(results_opath, "wt") as f:
+    with open(results_opath, "wt") as f:
         for r in flat_results:
             f.write(
                 "\t".join(

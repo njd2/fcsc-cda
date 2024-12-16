@@ -3,23 +3,37 @@ from pathlib import Path
 src = Path("resources")
 
 res_int = Path("results/intermediate")
-res_final = Path("results/final")
-
+res_int_fcs = res_int / "fcs"
 res_meta = res_int / "meta"
-res_meta_issues = res_meta / "issues"
-res_time_issues = res_int / "time"
-res_range = res_int / "ranges"
-res_clean = res_int / "clean"
+res_time = res_int / "time"
+
+res_final = Path("results/final")
+res_final_summary = res_final / "summaries"
+
+################################################################################
+# stage 1 - metadata filtering and standardization
+#
+# Find issues with each dataset based solely on the metadata of each file. This
+# includes things like voltage and event count. Critically, we can eliminate
+# entire datasets at this stage that don't have Matrix 2 and cyroPBMC datasets
+# (which we can do later as well, but doing it here potentially saves lots of
+# useless computation).
+#
+# When done, rewrite each "valid" FCS file using standardized metadata.
+
+# TODO this might change if I end up checking that the color channels are indeed
+# placed properly based on signal/noise ratios, which really means we might have
+# to split out the color/params analysis.
 
 
 rule read_fcs_meta:
     input:
         src / "fcs_wg2",
     output:
-        meta=res_meta / "fcs_meta.tsv.gz",
-        params=res_meta / "fcs_params.tsv.gz",
-        warnings=res_meta / "warnings.tsv.gz",
-        nonstandard=res_meta / "nonstandard.tsv.gz",
+        meta=res_meta / "standard_metadata.tsv",
+        params=res_meta / "parameters.tsv",
+        warnings=res_meta / "warnings.tsv",
+        nonstandard=res_meta / "nonstandard_metadata.tsv",
     conda:
         "envs/fcs.yml"
     script:
@@ -33,10 +47,9 @@ rule find_metadata_issues:
         meta=rules.read_fcs_meta.output.meta,
         params=rules.read_fcs_meta.output.params,
     output:
-        voltgain=res_meta_issues / "voltage_gain.tsv.gz",
-        channels=res_meta_issues / "missing_channels.tsv.gz",
-        issues=res_meta_issues / "all_issues.tsv.gz",
-        # clean=res_meta_issues / "clean.tsv.gz",
+        voltgain=res_meta / "voltage_gain.tsv",
+        channels=res_meta / "missing_channels.tsv",
+        issues=res_meta / "all_issues.tsv",
     params:
         min_events=config["min_events"],
         detector_limits=config["detector_limits"],
@@ -46,59 +59,12 @@ rule find_metadata_issues:
         "scripts/R/find_metadata_issues.R"
 
 
-rule find_time_issues:
-    input:
-        channels="static/wg2_linkage.tsv",
-        meta=rules.find_metadata_issues.output.issues,
-    output:
-        anomaly=res_time_issues / "anomaly.tsv.gz",
-        flat=res_time_issues / "flat.tsv.gz",
-        top=res_time_issues / "top.tsv.gz",
-        events=res_time_issues / "events.tsv.gz",
-    threads: 20
-    params:
-        min_events=config["min_events"],
-        time_limits=config["time_limits"],
-    conda:
-        "envs/fcs.yml"
-    script:
-        "scripts/python/fcs/find_time_issues.py"
-
-
-rule summarize_time_issues:
-    input:
-        meta=rules.read_fcs_meta.output.meta,
-        events=rules.find_time_issues.output.events,
-        anomaly=rules.find_time_issues.output.anomaly,
-        flat=rules.find_time_issues.output.flat,
-    output:
-        res_final / "time_issues_summary.html",
-    conda:
-        "envs/tidyverse.yml"
-    script:
-        "scripts/Rmd/summarize_time_issues.Rmd"
-
-
-rule aggregate_clean_up_errors:
-    input:
-        issues=rules.find_metadata_issues.output.issues,
-        events=rules.find_time_issues.output.events,
-        anomaly=rules.find_time_issues.output.anomaly,
-    output:
-        res_final / "all_errors.tsv",
-    conda:
-        "envs/tidyverse.yml"
-    script:
-        "scripts/R/summarize_clean_up.R"
-
-
 rule standardize_fcs:
     input:
         channels="static/wg2_linkage.tsv",
         meta=rules.find_metadata_issues.output.issues,
-        top=rules.find_time_issues.output.top,
     output:
-        res_clean / "flag.txt",
+        res_int_fcs / "standardized" / "files.tsv",
     threads: 20
     conda:
         "envs/fcs.yml"
@@ -110,53 +76,92 @@ rule remove_edge_events:
     input:
         rules.standardize_fcs.output,
     output:
-        results=res_range / "overrange.tsv.gz",
-        files=res_int / "truncated" / "files.tsv",
+        results=res_meta / "overrange.tsv",
+        files=res_int_fcs / "no_edge_events" / "files.tsv",
     threads: 20
     params:
-        clean_dir=res_clean,
-        thresh=0.99,
+        edge_thresh=config["edge_event_threshold"],
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/check_ranges.py"
+        "scripts/python/fcs/remove_edge_events.py"
 
 
-rule compute_channel_entropies:
+rule summarize_metadata_errors:
     input:
-        rules.remove_edge_events.output.files,
-    output:
-        res_int / "channel_qc" / "entropy.tsv.gz",
-    threads: 20
-    params:
-        embedding_sizes=[3, 5],
-        delays=[1],
-    conda:
-        "envs/fcs.yml"
-    script:
-        "scripts/python/fcs/compute_perm_entropy.py"
-
-
-rule summarize_clean_up:
-    input:
-        issues=rules.aggregate_clean_up_errors.output,
+        issues=rules.find_metadata_issues.output.issues,
         voltgain=rules.find_metadata_issues.output.voltgain,
-        ranges=rules.remove_edge_events.output.results,
+        edge_removed=rules.remove_edge_events.output.results,
     output:
-        res_final / "clean_up_summary.html",
+        res_final_summary / "metadata_errors.html",
     params:
         min_events=config["min_events"],
         detector_limits=config["detector_limits"],
-        truncation_thresh=0.99,
+        edge_thresh=config["edge_event_threshold"],
     conda:
         "envs/tidyverse.yml"
     script:
-        "scripts/Rmd/summarize_clean_up.Rmd"
+        "scripts/Rmd/summarize_metadata_errors.Rmd"
+
+
+################################################################################
+# check time channel for issues
+#
+# We expect the time channel to be "linear" (meaning always increasing at a
+# steady rate) if this isn't true there might be an issue.
+
+
+rule find_time_issues:
+    input:
+        files=rules.standardize_fcs.output[0],
+        meta=rules.find_metadata_issues.output.issues,
+    output:
+        anomaly=res_time / "anomaly.tsv.gz",
+        flat=res_time / "flat.tsv.gz",
+        top=res_time / "top.tsv.gz",
+        events=res_time / "events.tsv.gz",
+    threads: 20
+    params:
+        min_events=config["min_events"],
+        time_limits=config["time_limits"],
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/find_time_issues.py"
+
+
+rule summarize_time_errors:
+    input:
+        meta=rules.read_fcs_meta.output.meta,
+        issues=rules.find_metadata_issues.output.issues,
+        events=rules.find_time_issues.output.events,
+        anomaly=rules.find_time_issues.output.anomaly,
+        flat=rules.find_time_issues.output.flat,
+    output:
+        res_final_summary / "time_issues_summary.html",
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/Rmd/summarize_time_errors.Rmd"
+
+
+# rule compute_channel_entropies:
+#     input:
+#         rules.remove_edge_events.output.files,
+#     output:
+#         res_int / "channel_qc" / "entropy.tsv.gz",
+#     threads: 20
+#     params:
+#         embedding_sizes=[3, 5],
+#         delays=[1],
+#     conda:
+#         "envs/fcs.yml"
+#     script:
+#         "scripts/python/fcs/compute_perm_entropy.py"
 
 
 rule all:
     input:
-        rules.summarize_time_issues.output,
-        rules.summarize_clean_up.output,
-        rules.standardize_fcs.output,
-        rules.compute_channel_entropies.output,
+        rules.summarize_metadata_errors.output,
+        rules.summarize_time_errors.output,
+        # rules.compute_channel_entropies.output,

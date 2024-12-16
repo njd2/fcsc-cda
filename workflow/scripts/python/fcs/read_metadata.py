@@ -1,8 +1,6 @@
-import gzip
 from pathlib import Path
 from typing import NamedTuple, Any
 import datetime as dt
-from itertools import groupby
 from common.io import (
     group_params,
     _TEXT31,
@@ -13,7 +11,6 @@ from common.io import (
     FCSHeader,
     TABULAR_TEXT_HEADER,
     TabularTEXT,
-    ParamKeyword,
     ParsedParam,
 )
 
@@ -148,7 +145,7 @@ def main(smk: Any) -> None:
         if p.name.endswith(".fcs")
     ]
 
-    with gzip.open(meta_out, "wt") as f:
+    with open(meta_out, "wt") as f:
         header = [
             *FCSCMeta._fields,
             *FCSHeader._fields,
@@ -171,7 +168,7 @@ def main(smk: Any) -> None:
             ]
             f.write(to_tsv_line(xs))
 
-    with gzip.open(params_out, "wt") as f:
+    with open(params_out, "wt") as f:
         header = [
             *FCSCMeta._fields,
             "param_index",
@@ -183,7 +180,7 @@ def main(smk: Any) -> None:
                 xs = [*m.fcsc.line, str(pi), *pd.line]
                 f.write(to_tsv_line(xs))
 
-    with gzip.open(nonstandard_out, "wt") as f:
+    with open(nonstandard_out, "wt") as f:
         header = [*FCSCMeta._fields, "deviant", "key", "value"]
         f.write(to_tsv_line(header))
         for m in allmeta:
@@ -204,7 +201,7 @@ def main(smk: Any) -> None:
                 ]
                 f.write(to_tsv_line(xs))
 
-    with gzip.open(warnings_out, "wt") as f:
+    with open(warnings_out, "wt") as f:
         header = [*FCSCMeta._fields, "warning"]
         f.write(to_tsv_line(header))
         for m in allmeta:
