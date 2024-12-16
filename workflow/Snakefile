@@ -5,26 +5,11 @@ src = Path("resources")
 res_int = Path("results/intermediate")
 res_final = Path("results/final")
 
-res_linkage = res_int / "linkage"
 res_meta = res_int / "meta"
 res_meta_issues = res_meta / "issues"
 res_time_issues = res_int / "time"
 res_range = res_int / "ranges"
 res_clean = res_int / "clean"
-
-
-rule format_linkage:
-    input:
-        colors=src / "wg2_linkage.xlsx",
-        scatter_time="static/scatter_time_mapping.tsv",
-    output:
-        table=res_linkage / "wg2_linkage.tsv",
-        ex_em=res_linkage / "wg2_ex_em.pdf",
-        defined=res_linkage / "wg2_defined_channels.pdf",
-    conda:
-        "envs/xlsx.yml"
-    script:
-        "scripts/R/format_linkage.R"
 
 
 rule read_fcs_meta:
@@ -44,7 +29,7 @@ rule read_fcs_meta:
 rule find_metadata_issues:
     input:
         combos="static/wg2_combinations.tsv",
-        channels=rules.format_linkage.output.table,
+        channels="static/wg2_linkage.tsv",
         meta=rules.read_fcs_meta.output.meta,
         params=rules.read_fcs_meta.output.params,
     output:
@@ -63,7 +48,7 @@ rule find_metadata_issues:
 
 rule find_time_issues:
     input:
-        channels=rules.format_linkage.output.table,
+        channels="static/wg2_linkage.tsv",
         meta=rules.find_metadata_issues.output.issues,
     output:
         anomaly=res_time_issues / "anomaly.tsv.gz",
@@ -109,7 +94,7 @@ rule aggregate_clean_up_errors:
 
 rule standardize_fcs:
     input:
-        channels=rules.format_linkage.output.table,
+        channels="static/wg2_linkage.tsv",
         meta=rules.find_metadata_issues.output.issues,
         top=rules.find_time_issues.output.top,
     output:

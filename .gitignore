@@ -2,6 +2,7 @@
 resources
 results
 
+*.xlsx
 *.tsv
 *.tsv.gz
 *.gz
