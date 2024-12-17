@@ -145,23 +145,23 @@ rule summarize_time_errors:
         "scripts/Rmd/summarize_time_errors.Rmd"
 
 
-# rule compute_channel_entropies:
-#     input:
-#         rules.remove_edge_events.output.files,
-#     output:
-#         res_int / "channel_qc" / "entropy.tsv.gz",
-#     threads: 20
-#     params:
-#         embedding_sizes=[3, 5],
-#         delays=[1],
-#     conda:
-#         "envs/fcs.yml"
-#     script:
-#         "scripts/python/fcs/compute_perm_entropy.py"
+rule compute_channel_entropies:
+    input:
+        rules.remove_edge_events.output.files,
+    output:
+        res_int / "channel_qc" / "entropy.tsv.gz",
+    threads: 20
+    params:
+        embedding_sizes=[3, 5],
+        delays=[1],
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/compute_perm_entropy.py"
 
 
 rule all:
     input:
         rules.summarize_metadata_errors.output,
         rules.summarize_time_errors.output,
-        # rules.compute_channel_entropies.output,
+        rules.compute_channel_entropies.output,
