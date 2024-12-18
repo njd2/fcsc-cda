@@ -128,7 +128,7 @@ def compute_stuff_inner(c: RunConfig, weighted: bool) -> list[PEResult]:
 def compute_stuff(c: RunConfig) -> RunResult:
     return RunResult(
         c.file_index,
-        compute_stuff_inner(c, True) + compute_stuff_inner(c, True),
+        compute_stuff_inner(c, True) + compute_stuff_inner(c, False),
     )
 
 
