@@ -1,0 +1,223 @@
+---
+title: "FCS Clean-up summary"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+
+knitr::opts_chunk$set(fig.width=13, fig.height=7, fig_caption=TRUE)
+
+ps <- snakemake@params
+
+MIN_EVENT_SOP1 <- ps[["min_events"]][["sop1"]]
+MIN_EVENT_SOP2 <- ps[["min_events"]][["sop2"]]
+MIN_EVENT_SOP3 <- ps[["min_events"]][["sop3"]]
+VDIFF_LIMIT <- ps[["detector_limits"]][["voltage"]]
+GDIFF_LIMIT <- ps[["detector_limits"]][["gain"]]
+TRUNCATION <- as.double(ps[["edge_thresh"]])
+
+df_meta_issues <- read_tsv(
+  snakemake@input[["issues"]],
+  col_types = cols(
+    file_index = "i",
+    sop = "i",
+    eid = "i",
+    om = "c",
+    group = "c",
+    missing_file = "l",
+    has_voltage_variation = "l",
+    has_gain_variation = "l",
+    has_insufficient_events = "l",
+    has_multi_serial = "l",
+    has_multi_cytometer = "l",
+    has_multi_system = "l",
+    missing_time = "l",
+    missing_colors = "l",
+    missing_scatter_area = "l",
+    missing_scatter_height = "l",
+    has_incomplete_set = "l",
+    .default = "-"
+  )
+)
+
+df_voltgain <- read_tsv(
+  snakemake@input[["voltgain"]],
+  col_types = "icccccccdd"
+)
+
+df_ranges <- read_tsv(
+  snakemake@input[["edge_removed"]],
+  col_types = "icid",
+  col_names = c("file_index", "channel", "nover", "fracover")
+) %>%
+  left_join(df_meta_issues, by = "file_index")
+
+df_all_issues <- df_meta_issues %>%
+  mutate(
+    fatal_metadata_error = case_when(
+      missing_file ~ "1 missing file",
+      has_insufficient_events ~ "2 too few events",
+      has_voltage_variation | has_gain_variation ~ "3 voltage/gain variation",
+      has_incomplete_set ~ "4 incomplete",
+      TRUE ~ "5 no fatal metadata error"
+    ) %>%
+      fct_relabel(~ str_sub(.x, 3)),
+    nonfatal_metadata_error = case_when(
+      has_multi_serial | has_multi_cytometer | has_multi_system ~ "1 multi system",
+      fatal_metadata_error != "no fatal metadata error" ~ "2 previous error",
+      TRUE ~ "4 no non-fatal metadata error"
+    ) %>%
+      fct_relabel(~ str_sub(.x, 3)),
+    channel_error = case_when(
+      missing_time ~ "1 missing time channel" ,
+      missing_scatter_area ~ "2 missing scatter area",
+      missing_colors ~ "3 missing color channel",
+      fatal_metadata_error != "no fatal metadata error" ~ "4 previous error",
+      TRUE ~ "5 no channel error"
+    ) %>%
+      fct_relabel(~ str_sub(.x, 3)),
+    fatal_metadata_alpha = if_else(fatal_metadata_error == "no fatal metadata error", 0.5, 1),
+    nonfatal_metadata_alpha = if_else(nonfatal_metadata_error == "no non-fatal metadata error", 0.5, 1),
+    channel_alpha = if_else(channel_error == "no channel error", 0.5, 1),
+  )
+```
+
+This is a summary of the errors found during FCS file cleanup.
+
+The minimum events for each SOP were deemed as follows:
+
+* SOP 1: `r as.integer(MIN_EVENT_SOP1)`
+* SOP 2: `r as.integer(MIN_EVENT_SOP2)`
+* SOP 3: `r as.integer(MIN_EVENT_SOP3)`
+
+# Voltage/Gain variation
+
+All voltages for each channel for each machine should be the same compared to
+SOP-1.
+
+```{r, echo = FALSE, results = "asis"}
+df_voltgain %>%
+  ggplot(aes(vdiff, om, color = std_name_long)) +
+  geom_jitter(width = 0.005, height = 0.1, size = 0.5, na.rm= TRUE) +
+  facet_wrap(c("group"), nrow = 1) +
+  labs(x = "Relative $PnV difference from SOP-1 ((x - x1) / x1)", y = NULL, color = "Channel")
+
+df_voltgain %>%
+  ggplot(aes(gdiff, om, color = std_name_long)) +
+  geom_jitter(width = 0, height = 0.1, size = 0.5, na.rm= TRUE) +
+  facet_wrap(c("group"), nrow = 1) +
+  labs(x = "Relative $PnG difference from SOP-1 ((x - x1) / x1)", y = NULL, color = "Channel")
+```
+
+# Fatal Metadata Errors
+
+Error explanation:
+
+1. missing file: FCS file is completely missing from dataset
+2. too few events: FCS file has less than the minimum required events as
+   dictated by the SOP (before filtering as done with the time channel below)
+3. voltage/gain variation: voltage and/or gain within each channel has
+   unacceptable variation
+4. incomplete: FCS file is in a dataset that is incomplete, which implies
+   another file in the dataset has one of the below errors
+   
+For 3, variation was computed as the relative difference of each non-SOP-1 FCS
+file to those in SOP-1 (ie (x - x1) / x1). The unacceptable limits for voltage
+and gain were `r VDIFF_LIMIT` and `r GDIFF_LIMIT` respectively.
+
+For 4, "incomplete" datasets were determined as those with at least one file
+missing in SOP 2 - Matrix 2 or SOP 3 Test (Phenotype or FMO), since without
+these it is impossible to carry out the objective of the analysis.
+
+```{r, echo = FALSE, results = "asis"}
+df_all_issues %>%
+  ggplot(aes(y = om, fill = fatal_metadata_error, alpha = fatal_metadata_alpha)) +
+  geom_bar() +
+  facet_wrap(c("group"), nrow = 1) +
+  scale_alpha_continuous(limits = c(0, 1)) +
+  labs(x = "Number of Files", y = NULL, fill = "Fatal\nMetadata Error") +
+  theme(legend.position = "bottom") +
+  guides(alpha = "none")
+```
+
+# Non-Fatal Metadata Errors
+
+Error explanation:
+
+1. multi system: dataset may have been acquired on multiple machines (as shown
+   via $CYT, $CYTSN, or $SYS keywords)
+2. previous error: a fatal error from the above section
+   
+```{r, echo = FALSE, results = "asis"}
+df_all_issues %>%
+  ggplot(aes(y = om, fill = nonfatal_metadata_error, alpha = nonfatal_metadata_alpha)) +
+  geom_bar() +
+  facet_wrap(c("group"), nrow = 1) +
+  scale_alpha_continuous(limits = c(0, 1)) +
+  labs(x = "Number of Files", y = NULL, fill = "Non-Fatal\nMetadata Error") +
+  theme(legend.position = "bottom") +
+  guides(alpha = "none")
+```
+
+# Channel Errors
+
+Error explanation:
+
+1. missing time channel: time channel is absent from the FCS file
+2. missing scatter area: missing either FSC-A or SSC-A
+3. missing scatter height: missing either FSC-H or SSC-H
+4. missing color channels: at least 1 of the 8 standardized color channels is
+   missing
+5. previous error: a fatal error from the above section
+   
+```{r, echo = FALSE, results = "asis"}
+df_all_issues %>%
+  ggplot(aes(y = om, fill = channel_error, alpha = channel_alpha)) +
+  geom_bar() +
+  facet_wrap(c("group"), nrow = 1) +
+  scale_alpha_continuous(limits = c(0, 1)) +
+  labs(x = "Number of Files", y = NULL, fill = "Channel Error") +
+  theme(legend.position = "bottom") +
+  guides(alpha = "none")
+```
+
+# Truncation/range summary
+
+Some channels contain events that are at/near their maximum range.
+
+Events were considered truncated if they were greater than `r (TRUNCATION * 100)`
+percent of the range given by $PnR for the given channel.
+
+Note that only files that contained no fatel or channel errors were processed
+at this step.
+
+## Scatter
+
+```{r, echo = FALSE, results = "asis"}
+df_ranges %>%
+  filter(channel %in% c("fsc_a", "fsc_h", "ssc_a", "ssc_h")) %>%
+  ggplot(aes(fracover, om, color = channel)) +
+  geom_jitter(width = 0, height = 0.1, size = 0.5) +
+  facet_wrap(c("group"), nrow = 1) +
+  labs(x = "Truncation Rate", y = NULL, fill = "Channel") +
+  theme(legend.position = "bottom") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_x_continuous(limit = c(0, 1), labels = scales::percent, breaks = c(0, 0.5, 1))
+```
+
+## Color
+
+```{r, echo = FALSE, results = "asis"}
+df_ranges %>%
+  filter(!channel %in% c("fsc_a", "fsc_h", "ssc_a", "ssc_h")) %>%
+  ggplot(aes(fracover, om, color = channel)) +
+  geom_jitter(width = 0, height = 0.1, size = 0.5) +
+  facet_wrap(c("group"), nrow = 1) +
+  labs(x = "Truncation Rate", y = NULL, fill = "Channel") +
+  theme(legend.position = "bottom") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_x_continuous(limit = c(0, 1), labels = scales::percent, breaks = c(0, 0.5, 1))
+```

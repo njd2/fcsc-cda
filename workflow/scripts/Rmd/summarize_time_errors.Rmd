@@ -1,0 +1,222 @@
+---
+title: "FCS files with time issues"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+library(scattermore)
+
+knitr::opts_chunk$set(fig.width=13, fig.height=7, fig_caption=TRUE)
+
+process_gates <- function(df, gt) {
+  df %>%
+    group_by(file_index) %>%
+    mutate(novalid = sum(valid) == 0) %>%
+    mutate(hasgates = n() > 1) %>%
+    ungroup() %>%
+    add_column(gate_type = gt)
+}
+
+df_ano <- read_tsv(
+  snakemake@input[["anomaly"]],
+  col_types = "iii-l",
+  col_names = c("file_index", "start", "end", "valid")
+) %>%
+  process_gates("anomaly")
+
+df_flat <- read_tsv(
+  snakemake@input[["flat"]],
+  col_types = "iiil",
+  col_names = c("file_index", "start", "end", "valid")
+) %>%
+  process_gates("flow rate")
+
+# ASSUME these are sorted by file/event index
+df_events <- read_tsv(
+  snakemake@input[["events"]],
+  col_types = "iid",
+  col_names = c("file_index", "event_index", "time")
+)
+
+df_meta <- read_tsv(
+  snakemake@input[["meta"]],
+  col_types = cols(
+    machine = "c",
+    org = "c",
+    file_index = "i",
+    material = "c",
+    sop = "i",
+    eid = "i",
+    rep = "i",
+    .default = "-"
+  )
+)
+
+df_meta_issues <- read_tsv(
+  snakemake@input[["issues"]],
+  col_types = cols(
+    file_index = "i",
+    sop = "i",
+    eid = "i",
+    om = "c",
+    group = "c",
+    missing_file = "l",
+    has_voltage_variation = "l",
+    has_gain_variation = "l",
+    has_insufficient_events = "l",
+    missing_time = "l",
+    missing_colors = "l",
+    missing_scatter_area = "l",
+    missing_scatter_height = "l",
+    has_incomplete_set = "l",
+    .default = "-"
+  )
+)
+
+make_plot <- function(df_gates, key, both) {
+  i <- key$file_index[[1]]
+  m <- df_meta %>%
+    filter(file_index == i) %>%
+    head(n = 1)
+  cat(sprintf("### %s - %s\n\n", m$org, m$machine))
+  cat(sprintf("File Index = %d\n\n", i))
+  cat(sprintf("SOP = %d\n\n", m$sop))
+  cat(sprintf("Experiment = %d\n\n", m$eid))
+  cat(sprintf("Rep = %d\n\n", m$rep))
+  cat(sprintf("Material = %s\n\n", m$material))
+  p <- df_events %>%
+    filter(file_index == i) %>%
+    ggplot(aes(event_index, time)) +
+    geom_scattermore(pointsize=2)
+  # TODO add colors for each gate type
+  if (FALSE) {
+    rest <- list(
+      geom_rect(
+        data = df_gates,
+        aes(xmin = start, xmax = end, ymin = 0, ymax = Inf, fill = gate_type),
+        alpha = 0.2,
+        inherit.aes = FALSE
+      ),
+      scale_fill_discrete(drop = FALSE),
+      labs(x = "Event", y = "Time Channel", fill = "Gate Type")
+    )
+  } else {
+    rest <- list(
+      geom_vline(
+        data = slice_tail(df_gates, n = -1),
+        aes(xintercept = start),
+        color = "red",
+        linetype = "dashed"
+      ),
+      labs(x = "Event", y = "Time Channel")
+    )
+  }
+  print(p + rest)
+  cat("\n\n")
+}
+
+anomaly_idx <- unique(df_ano$file_index)
+bad_time_idx <- unique(df_events$file_index)
+
+df_time_issues <- df_meta_issues %>%
+  mutate(
+    has_time_anomaly = file_index %in% bad_time_idx & !(file_index %in% anomaly_idx),
+    has_time_nonlinear = file_index %in% bad_time_idx & file_index %in% anomaly_idx,
+    time_error = case_when(
+      missing_file | has_voltage_variation | has_gain_variation |
+        has_insufficient_events | missing_time | missing_colors |
+        missing_scatter_area | missing_scatter_height | has_incomplete_set ~
+          "1 previous error",
+      has_time_anomaly ~ "2 has time anomaly",
+      has_time_nonlinear ~ "3 has uneven flow rate",
+      TRUE ~ "4 no time error"
+    ) %>%
+      fct_relabel(~ str_sub(.x, 3)),
+    time_alpha = if_else(time_error == "no time error", 0.5, 1)
+  )
+
+```
+
+The following are the time channels of the FCS files with detected issues 
+(further elaborated below).
+
+# Error Summary
+
+```{r, echo = FALSE, results = "asis"}
+df_time_issues %>%
+  ggplot(aes(y = om, fill = time_error, alpha = time_alpha)) +
+  geom_bar() +
+  facet_wrap(c("group"), nrow = 1) +
+  scale_alpha_continuous(limits = c(0, 1)) +
+  labs(x = "Number of Files", y = NULL, fill = "Time Error") +
+  theme(legend.position = "bottom") +
+  guides(alpha = "none")
+```
+
+
+# Invalid Files
+
+In each of these cases, the minimum nunmber of required events was not
+achieved after trying to gate around these issues.
+
+## Files with anomalies
+
+These files have one or both of these issues:
+
+* (large) non-monotonicity: the time channel reset to (near) zero in the middle
+  of the run
+
+* gaps: the time channel has a large pause in the middle, which usually
+  indicates a clog or bubble
+
+```{r, echo = FALSE, results = "asis"}
+.df_ano <- df_ano %>%
+  filter(novalid)
+
+if (nrow(.df_ano) > 0) {
+  .df_ano %>%
+    group_by(file_index) %>%
+    group_walk(~ make_plot(.x, .y, FALSE))
+} else {
+  cat("None\n\n")
+}
+
+```
+
+## Files with non-linearity
+
+These files have large deviations in flow rate somewhere in the middle.
+
+```{r, echo = FALSE, results = "asis"}
+.df_flat <- df_flat %>%
+  filter(novalid)
+
+if (nrow(.df_flat) > 0) {
+  .df_flat %>%
+    group_by(file_index) %>%
+    group_walk(~ make_plot(.x, .y, FALSE))
+} else {
+  cat("None\n\n")
+}
+```
+
+# Valid Files
+
+These are files that have at least one gate but exceeded the minimum event
+count in at least one gate.
+
+```{r, echo = FALSE, results = "asis"}
+bind_rows(
+  df_flat,
+  df_ano
+) %>%
+  mutate(gate_type = factor(gate_type)) %>%
+  filter(!novalid) %>%
+  filter(hasgates) %>%
+  arrange(file_index) %>%
+  group_by(file_index) %>%
+  group_walk(~ make_plot(.x, .y, TRUE))
+```
