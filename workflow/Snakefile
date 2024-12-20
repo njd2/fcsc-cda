@@ -26,9 +26,27 @@ res_final_summary = res_final / "summaries"
 # to split out the color/params analysis.
 
 
+rule check_md5s:
+    input:
+        checksums="static/nist_wg2_md5.tsv",
+        fcs_files=src / "fcs_wg2",
+    output:
+        res_meta / "md5_passed.flag",
+    log:
+        res_meta / "md5_failed.txt",
+    shell:
+        """
+        cur=$(pwd)
+        cd {input.fcs_files} && \
+        md5sum --quiet -c $cur/{input.checksums} 2> $cur/{log} && \
+        touch $cur/{output}
+        """
+
+
 rule read_fcs_meta:
     input:
-        src / "fcs_wg2",
+        _checksums=rules.check_md5s.output,
+        fcs_files=src / "fcs_wg2",
     output:
         meta=res_meta / "standard_metadata.tsv",
         params=res_meta / "parameters.tsv",

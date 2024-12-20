@@ -132,7 +132,7 @@ def to_tsv_line(xs: list[str]) -> str:
 
 
 def main(smk: Any) -> None:
-    root = Path(smk.input[0])
+    root = Path(smk.input["fcs_files"])
 
     meta_out = Path(smk.output["meta"])
     params_out = Path(smk.output["params"])
