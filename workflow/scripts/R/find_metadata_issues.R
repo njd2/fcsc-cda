@@ -15,6 +15,12 @@ ensure_empty <- function(df, msg) {
   }
 }
 
+df_exclusions <- read_tsv(
+  snakemake@input[["exclusions"]],
+  col_types = "ciiiccc"
+) %>%
+  rename(exclusion_comment = comment)
+
 df_combos <- read_tsv(
   snakemake@input[["combos"]],
   col_types = "ciiicc"
@@ -43,7 +49,6 @@ df_combos <- read_tsv(
   mutate(
     required = (sop == 2 & eid != 1) | (sop == 3 & eid == 1)
   )
-
 
 df_meta <- read_tsv(
   snakemake@input[["meta"]],
@@ -204,6 +209,7 @@ df_multi_issues <- df_meta %>%
 
 df_issues <- df_combos %>%
   left_join(df_meta, by = c("org", "machine", "sop", "eid", "rep", "material")) %>%
+  left_join(df_exclusions, by = c("org", "machine", "sop", "eid", "rep", "material")) %>%
   mutate(
     missing_file = is.na(file_index),
     min_events = case_when(
@@ -211,6 +217,7 @@ df_issues <- df_combos %>%
       sop == 2 ~ MIN_EVENT_SOP2,
       sop == 3 ~ MIN_EVENT_SOP3
     ),
+    has_manual_exclusion = !is.na(exclusion_comment),
     has_voltage_variation = file_index %in% vdiff_issue_indices,
     has_gain_variation = file_index %in% gdiff_issue_indices,
     percent_complete = tot / min_events * 100,
@@ -221,8 +228,8 @@ df_issues <- df_combos %>%
   group_by(org, machine) %>%
   mutate(
     has_incomplete_set = sum(missing_file & required) > 0 |
-      sum(has_voltage_variation & required) > 0 |
-      sum(has_gain_variation & required) > 0 |
+      ## sum(has_voltage_variation & required) > 0 |
+      ## sum(has_gain_variation & required) > 0 |
       sum(has_insufficient_events & required) > 0
   ) %>%
   ungroup() %>%
@@ -231,7 +238,8 @@ df_issues <- df_combos %>%
     percent_complete, missing_file, has_voltage_variation, has_gain_variation,
     has_insufficient_events, has_multi_serial, has_multi_cytometer,
     has_multi_system, missing_time, missing_colors, missing_scatter_area,
-    missing_scatter_height, has_incomplete_set
+    missing_scatter_height, has_incomplete_set, has_manual_exclusion,
+    exclusion_comment
   ) %>%
   arrange(file_index)
 

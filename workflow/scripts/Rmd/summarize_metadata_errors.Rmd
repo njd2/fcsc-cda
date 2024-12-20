@@ -39,6 +39,7 @@ df_meta_issues <- read_tsv(
     missing_scatter_area = "l",
     missing_scatter_height = "l",
     has_incomplete_set = "l",
+    has_manual_exclusion = "l",
     .default = "-"
   )
 )
@@ -60,7 +61,7 @@ df_all_issues <- df_meta_issues %>%
     fatal_metadata_error = case_when(
       missing_file ~ "1 missing file",
       has_insufficient_events ~ "2 too few events",
-      has_voltage_variation | has_gain_variation ~ "3 voltage/gain variation",
+      has_manual_exclusion ~ "3 manual exclusion",
       has_incomplete_set ~ "4 incomplete",
       TRUE ~ "5 no fatal metadata error"
     ) %>%

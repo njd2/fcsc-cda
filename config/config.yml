@@ -15,3 +15,10 @@ time_limits:
   non_mono_limit: 100
   rate_thresh: 50
   min_size: 500
+
+manual_exclusions:
+  - org: BDSJ
+    machine: Lyric
+    sop: 2
+    eid: 1
+    comment: voltages for pacblue and aqua channels flipped

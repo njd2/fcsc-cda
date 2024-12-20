@@ -58,8 +58,22 @@ rule read_fcs_meta:
         "scripts/python/fcs/read_metadata.py"
 
 
+rule generate_exclusions:
+    input:
+        "static/wg2_combinations.tsv",
+    output:
+        res_meta / "exclusions.tsv",
+    params:
+        exclusions=config["manual_exclusions"],
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/generate_exclusions.py"
+
+
 rule find_metadata_issues:
     input:
+        exclusions=rules.generate_exclusions.output,
         combos="static/wg2_combinations.tsv",
         channels="static/wg2_linkage.tsv",
         meta=rules.read_fcs_meta.output.meta,
