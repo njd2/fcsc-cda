@@ -5,6 +5,7 @@ import warnings
 import datetime as dt
 from pathlib import Path
 from typing import NamedTuple, Callable, NewType, Any, TypeVar, assert_never, Type, Self
+from abc import ABC, abstractmethod
 import pandas as pd
 import fcsparser as fp  # type: ignore
 from pydantic import BaseModel as BaseModel_, validator
@@ -254,32 +255,35 @@ DATETIME_RE = re.compile(
 )
 
 
-class _IsTabulatable:
+class _IsTabulatable(ABC):
     """Superclass to represent FCS keywords that can be written to a table."""
 
     @classmethod
+    @abstractmethod
     def header(self) -> list[str]:
         """Return row header"""
-        return NotImplemented
+        pass
 
     @property
+    @abstractmethod
     def rowvalues(self) -> list[str]:
         """Return row values. Assumed to match exactly with header."""
-        return NotImplemented
+        pass
 
     @property
     def mapping(self) -> dict[str, str]:
         return {h: v for h, v in zip(self.header(), self.rowvalues)}
 
 
-class _IsSerializable:
+class _IsSerializable(ABC):
     """
     Superclass to represent FCS keywords that can be written to a new TEXT segment.
     """
 
     @property
+    @abstractmethod
     def keyval_pairs(self) -> dict[str, Any]:
-        return NotImplemented
+        pass
 
     @property
     def keywords(self) -> dict[StandardKey, str]:
