@@ -5,14 +5,19 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as spo  # type: ignore
 from pathlib import Path
-from typing import NamedTuple, Any, TextIO, NewType
-from dataclasses import dataclass
+from typing import NamedTuple, Any, TextIO, NewType, TypeVar, Generic
+from dataclasses import dataclass, astuple
 from multiprocessing import Pool
 from common.io import read_fcs
+
+X = TypeVar("X")
 
 MinEvents = NewType("MinEvents", int)
 I0 = NewType("I0", int)
 I1 = NewType("I1", int)
+
+Anomalies = npt.NDArray[np.uint8]
+TimeValues = npt.NDArray[np.float32]
 
 
 class MinEventsSOP(NamedTuple):
@@ -32,23 +37,83 @@ class Params(NamedTuple):
 
 
 @dataclass(frozen=True)
-class Gate:
-    start: I0
-    end: I1
-    min_events: MinEvents
+class Interval(Generic[X]):
+    """Interval on some dimension.
+
+    By convention, x in within interval iif x0 <= x < x1 (ie slice notation).
+    """
+
+    x0: X
+    x1: X
+
+
+EventInterval = Interval[int]
+TimeInterval = Interval[float]
+
+
+def events_to_time(i: EventInterval, t: TimeValues) -> TimeInterval:
+    return Interval(t[i.x0], t[i.x1])
+
+
+class _Gate:
+    def __init__(self, i0: int, i1: int, n: MinEvents, t: TimeValues):
+        i = Interval(i0, i1)
+        self.event: EventInterval = i
+        self.time: TimeInterval = events_to_time(i, t)
+        self.min_events = n
 
     @property
-    def valid(self) -> int:
-        return self.length >= self.min_events
+    def _serial(self) -> tuple[int, int, float, float, bool]:
+        return (*astuple(self.event), *astuple(self.time), self.valid)
 
     @property
-    def length(self) -> int:
-        return self.end - self.start + 1
+    def valid(self) -> bool:
+        return self.n_events >= self.min_events
+
+    @property
+    def n_events(self) -> int:
+        return self.event.x1 - self.event.x0 + 1
+
+    def __repr__(self) -> str:
+        return (
+            f"Gate(interval=({self.event.x0}, {self.event.x1}), min={self.min_events})"
+        )
 
 
-@dataclass(frozen=True)
-class AnomalyGate(Gate):
-    anomaly: int | None
+class FlatGate(_Gate):
+    def __init__(
+        self,
+        i0: int,
+        i1: int,
+        n: MinEvents,
+        t: TimeValues,
+        parent_anomaly: int,
+        flat_break: bool,
+    ):
+        super().__init__(i0, i1, n, t)
+        self.parent_anomaly = parent_anomaly
+        self.flat_break = flat_break
+
+    @property
+    def serial(self) -> tuple[int, int, float, float, bool, int, bool]:
+        return (*super()._serial, self.parent_anomaly, self.flat_break)
+
+
+class AnomalyGate(_Gate):
+    def __init__(
+        self,
+        i0: int,
+        i1: int,
+        n: MinEvents,
+        t: TimeValues,
+        anomaly: int,
+    ):
+        super().__init__(i0, i1, n, t)
+        self.anomaly = anomaly
+
+    @property
+    def serial(self) -> tuple[int, int, float, float, bool, int]:
+        return (*super()._serial, int(self.anomaly))
 
 
 class RunConfig(NamedTuple):
@@ -60,8 +125,8 @@ class RunConfig(NamedTuple):
 
 class GateResult(NamedTuple):
     anomaly_gates: list[AnomalyGate]
-    flat_gates: list[Gate]
-    time: "pd.Series[float] | None"
+    flat_gates: list[FlatGate]
+    time: TimeValues | None
 
 
 class RunResult(NamedTuple):
@@ -82,52 +147,74 @@ def get_min_events(p: Params, sop: int) -> MinEvents:
         raise ValueError("Invalid SOP")
 
 
-def get_anomalies(p: Params, t: "pd.Series[float]") -> npt.NDArray[np.int64]:
-    tdiff = t - t.shift(1)
+def get_anomalies(p: Params, t: TimeValues) -> Anomalies:
+    tdiff = t[1:] - t[:-1]
     tdiff_norm = tdiff / (t.max() - t.min())
 
-    large_neg = (tdiff < -p.spike_limit) & (tdiff.shift(-1) > p.spike_limit)
-    neg_mask = ~large_neg.shift(1, fill_value=False)
-    large_gap = (tdiff_norm > p.gap_limit) & neg_mask
-    non_mono = tdiff < -p.non_mono_limit
+    neg_spike = np.zeros((t.size), dtype=bool)
+    large_gap = np.zeros((t.size), dtype=bool)
+    non_mono = np.zeros((t.size), dtype=bool)
+
+    # TODO this is confusing because it assumes that spike limit is bigger than
+    # gap limit and non-mono limit.
+
+    # Large negative spikes occur when the current point is less than the
+    # previous point by some large margin, and the point after comes back up by
+    # the same margin or greater
+    neg_spike[1:-1] = (tdiff[:-1] < -p.spike_limit) & (tdiff[1:] > p.spike_limit)
+    # Large gaps occur when the previous point is much less than the current
+    # point by some large margin. Since negative spikes will by definition
+    # produce large increases, mask out the points for which a negative spike
+    # occurred immediately previous
+    large_gap[2:] = tdiff_norm[1:] > p.gap_limit
+    large_gap[2:] = ~neg_spike[1:-1] & large_gap[2:]
+    # Non monotonic events occur when the current point is less than the
+    # previous point by some margin. Assume this gets overridden below if it is
+    # also a spike.
+    non_mono[1:-1] = tdiff[:-1] < -p.non_mono_limit
 
     return np.select(
-        [large_neg, large_gap, non_mono],
+        [neg_spike, large_gap, non_mono],
         [1, 2, 3],
         default=0,
-    )
+    ).astype(np.uint8)
 
 
 def get_anomaly_gates(
-    anomalies: npt.NDArray[np.int64],
+    anomalies: npt.NDArray[np.uint8],
     n: MinEvents,
+    t: TimeValues,
 ) -> list[AnomalyGate]:
     total = anomalies.size
     if anomalies.sum() == 0:
-        return [AnomalyGate(I0(0), I1(total - 1), n, None)]
+        return [AnomalyGate(0, total - 1, n, t, 0)]
     else:
-        mask = anomalies > 1
+        mask = (anomalies == 2) | (anomalies == 3)
         anomaly_positions = np.where(mask)[0].tolist()
         starts: list[int] = [0, *anomaly_positions]
         ends: list[int] = [*anomaly_positions, total - 1]
-        codes: list[int | None] = [*anomalies[mask].tolist(), None]
-        return [AnomalyGate(I0(s), I1(e), n, c) for s, e, c in zip(starts, ends, codes)]
+        codes = [*anomalies[mask].tolist(), 0]
+        return [AnomalyGate(s, e, n, t, c) for s, e, c in zip(starts, ends, codes)]
 
 
-def ss(xs: "pd.Series[float]") -> float:
+def ss(xs: TimeValues) -> float:
     x: float = np.square(xs - xs.mean()).sum()
     return x
 
 
-def r2(gate: float, i0: int, i1: int, xs: "pd.Series[float]", sst: float) -> float:
+def r2(gate: float, i0: int, i1: int, xs: TimeValues, sst: float) -> float:
     g0 = int(gate)
-    ss0 = ss(xs[i0:g0])
-    ss1 = ss(xs[g0 + 1 : i1])
+    ss0 = ss(xs[i0 : (g0 - 1)]) if g0 - 1 > i0 else 0
+    ss1 = ss(xs[g0 : i1 - 1]) if i1 - 1 > g0 else 0
     return 1 - (1 - (ss0 + ss1) / sst)
 
 
 def find_flat(
-    p: Params, acc: list[int], i0: int, i1: int, tdiff: "pd.Series[float]"
+    p: Params,
+    acc: list[int],
+    i0: int,
+    i1: int,
+    tdiff: TimeValues,
 ) -> list[int]:
     # This function is a basic step function curve fitter. The "gate" is the
     # boundary of the step, and it is placed such that the means of the two
@@ -137,8 +224,9 @@ def find_flat(
     # function will continue partitioning the vector until an arbitrary
     # threshold is achieved
     #
-    # NOTE thresh should be a positive number
-    sst = ss(tdiff[i0:i1])
+    # NOTE each of these slices has a -1 for the top of the interval since by
+    # convention the "gates" in this code are [i0, i1)
+    sst = ss(tdiff[i0 : i1 - 1])
     # set tolerance to 0.5 so we stop the model at the nearest integer-ish
     res = spo.minimize_scalar(
         r2,
@@ -147,8 +235,8 @@ def find_flat(
         args=(i0, i1, tdiff, sst),
         bounds=(i0, i1),
     )
-    gate = i0 + int(res.x)
-    rate_diff = math.log10(tdiff[i0:gate].mean() / tdiff[(gate + 1) : i1].mean())
+    gate = int(res.x)
+    rate_diff = math.log10(tdiff[i0 : gate - 1].mean() / tdiff[gate : i1 - 1].mean())
     # if gate is larger than our minimum size and produces two partitions with
     # flow rates that differ beyond our threshold, place the gate, and try to
     # gate the two new partitions, otherwise return whatever gates we have so
@@ -168,49 +256,52 @@ def find_flat(
 
 def get_flat_gates(
     p: Params,
-    i0: I0,
-    i1: I1,
-    tdiff: "pd.Series[float]",
+    ag: AnomalyGate,
+    tdiff: TimeValues,
+    t: TimeValues,
     n: MinEvents,
-) -> list[Gate]:
+) -> list[FlatGate]:
     # NOTE add 1 since the first diff value for this gate is not differentiable
-    gates = find_flat(p, [], i0 + 1, i1, tdiff)
-    if len(gates) == 0:
-        return [Gate(i0, i1, n)]
+    gates = find_flat(p, [], ag.event.x0 + 1, ag.event.x1, tdiff)
+    if len(gates) == 0 or not ag.valid:
+        return [FlatGate(ag.event.x0, ag.event.x1, n, t, ag.anomaly, False)]
     else:
-        starts = [i0, *gates]
-        ends = [*gates, i1]
-        return [Gate(I0(s), I1(e), n) for s, e in zip(starts, ends)]
+        starts = [ag.event.x0, *gates]
+        ends = [*gates, ag.event.x1]
+        return [
+            FlatGate(s, e, n, t, ag.anomaly, s > ag.event.x0)
+            for s, e in zip(starts, ends)
+        ]
 
 
 def get_all_gates(c: RunConfig) -> RunResult:
     parsed = read_fcs(c.path)
 
     min_events = get_min_events(c.params, c.sop)
-    t = parsed.events["time"]
+    t = parsed.events["time"].values.astype(np.float32)
     anomalies = get_anomalies(c.params, t)
 
-    ano_gates = get_anomaly_gates(anomalies, min_events)
+    # TODO this can be massively simplified by only exporting flat gates
+    ano_gates = get_anomaly_gates(anomalies, min_events, t)
     n_ano_valid = sum(g.valid for g in ano_gates)
 
     if n_ano_valid == 0:
         res = GateResult(ano_gates, [], t)
     else:
-        t_clean = t[anomalies == 0]
-        tdiff_clean = t_clean - t_clean.shift(1)
+        t_clean = t[anomalies != 1]
+        tdiff_clean = t_clean[1:] - t_clean[:-1]
         flat_gates = [
             fg
             for ag in ano_gates
-            if ag.valid
-            for fg in get_flat_gates(
-                c.params, ag.start, ag.end, tdiff_clean, min_events
-            )
+            for fg in get_flat_gates(c.params, ag, tdiff_clean, t, min_events)
         ]
         n_flat_valid = sum(g.valid for g in flat_gates)
         n_total = len(flat_gates) + len(ano_gates) - n_ano_valid
         res = GateResult(
             ano_gates,
             flat_gates,
+            # include time vector if we have no valid flat gates and we have at
+            # least one gate, in which case we want to plot the gates to inspect
             t if n_flat_valid == 0 or n_total > 1 else None,
         )
     return RunResult(c.file_index, res)
@@ -256,6 +347,8 @@ def main(smk: Any) -> None:
     # weeeeeeeee
     with Pool(smk.threads) as pl:
         gate_results = pl.map(get_all_gates, runs)
+    # gate_results = map(get_all_gates, runs[1476:1477])
+    # gate_results = map(get_all_gates, runs[1483:1484])
 
     with (
         gzip.open(anomaly_out, "wt") as ao,
@@ -271,24 +364,24 @@ def main(smk: Any) -> None:
                 b.write("\t".join([fi, *[str(x) for x in xs]]) + "\n")
 
             for ag in res.anomaly_gates:
-                write_tsv_line(ao, [ag.start, ag.end, ag.anomaly, ag.valid])
+                write_tsv_line(ao, [*ag.serial])
             for fg in res.flat_gates:
-                write_tsv_line(fo, [fg.start, fg.end, fg.valid])
+                write_tsv_line(fo, [*fg.serial])
             # last gate in the flat series is the longest, so use that one
             g0 = next(
                 iter(
                     sorted(
                         (g for g in res.flat_gates if g.valid),
-                        key=lambda g: -g.length,
+                        key=lambda g: -g.n_events,
                     )
                 ),
                 None,
             )
             if g0 is not None:
-                write_tsv_line(to, [g0.start, g0.end])
+                write_tsv_line(to, [*g0.serial])
             if res.time is not None:
-                for ei, t in res.time.items():
-                    write_tsv_line(eo, [ei, t])
+                for ei in range(res.time.size):
+                    write_tsv_line(eo, [ei, res.time[ei]])
 
 
 main(snakemake)  # type: ignore

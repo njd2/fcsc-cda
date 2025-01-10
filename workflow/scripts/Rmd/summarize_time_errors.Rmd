@@ -22,14 +22,14 @@ process_gates <- function(df, gt) {
 
 df_ano <- read_tsv(
   snakemake@input[["anomaly"]],
-  col_types = "iii-l",
+  col_types = "iii--l-",
   col_names = c("file_index", "start", "end", "valid")
 ) %>%
   process_gates("anomaly")
 
 df_flat <- read_tsv(
   snakemake@input[["flat"]],
-  col_types = "iiil",
+  col_types = "iii--l--",
   col_names = c("file_index", "start", "end", "valid")
 ) %>%
   process_gates("flow rate")
