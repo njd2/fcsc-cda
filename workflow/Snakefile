@@ -148,7 +148,6 @@ rule find_time_issues:
         files=rules.standardize_fcs.output[0],
         meta=rules.find_metadata_issues.output.issues,
     output:
-        anomaly=res_time / "anomaly.tsv.gz",
         flat=res_time / "flat.tsv.gz",
         top=res_time / "top.tsv.gz",
         events=res_time / "events.tsv.gz",
@@ -167,7 +166,6 @@ rule summarize_time_errors:
         meta=rules.read_fcs_meta.output.meta,
         issues=rules.find_metadata_issues.output.issues,
         events=rules.find_time_issues.output.events,
-        anomaly=rules.find_time_issues.output.anomaly,
         flat=rules.find_time_issues.output.flat,
     output:
         res_final_summary / "time_issues_summary.html",

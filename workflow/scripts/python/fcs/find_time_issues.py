@@ -124,7 +124,6 @@ class RunConfig(NamedTuple):
 
 
 class GateResult(NamedTuple):
-    anomaly_gates: list[AnomalyGate]
     flat_gates: list[FlatGate]
     time: TimeValues | None
 
@@ -281,29 +280,24 @@ def get_all_gates(c: RunConfig) -> RunResult:
     t = parsed.events["time"].values.astype(np.float32)
     anomalies = get_anomalies(c.params, t)
 
-    # TODO this can be massively simplified by only exporting flat gates
     ano_gates = get_anomaly_gates(anomalies, min_events, t)
-    n_ano_valid = sum(g.valid for g in ano_gates)
 
-    if n_ano_valid == 0:
-        res = GateResult(ano_gates, [], t)
-    else:
-        t_clean = t[anomalies != 1]
-        tdiff_clean = t_clean[1:] - t_clean[:-1]
-        flat_gates = [
-            fg
-            for ag in ano_gates
-            for fg in get_flat_gates(c.params, ag, tdiff_clean, t, min_events)
-        ]
-        n_flat_valid = sum(g.valid for g in flat_gates)
-        n_total = len(flat_gates) + len(ano_gates) - n_ano_valid
-        res = GateResult(
-            ano_gates,
-            flat_gates,
-            # include time vector if we have no valid flat gates and we have at
-            # least one gate, in which case we want to plot the gates to inspect
-            t if n_flat_valid == 0 or n_total > 1 else None,
-        )
+    t_clean = t[anomalies != 1]
+    tdiff_clean = t_clean[1:] - t_clean[:-1]
+    flat_gates = [
+        fg
+        for ag in ano_gates
+        for fg in get_flat_gates(c.params, ag, tdiff_clean, t, min_events)
+    ]
+
+    n_flat_valid = sum(g.valid for g in flat_gates)
+
+    res = GateResult(
+        flat_gates,
+        # include time vector if we have no valid flat gates and we have at
+        # least one gate, in which case we want to plot the gates to inspect
+        t if n_flat_valid == 0 or len(flat_gates) > 1 else None,
+    )
     return RunResult(c.file_index, res)
 
 
@@ -326,7 +320,6 @@ def main(smk: Any) -> None:
     meta_in = Path(smk.input["meta"])
     files_in = Path(smk.input["files"])
 
-    anomaly_out = Path(smk.output["anomaly"])
     flat_out = Path(smk.output["flat"])
     top_out = Path(smk.output["top"])
     event_out = Path(smk.output["events"])
@@ -347,11 +340,8 @@ def main(smk: Any) -> None:
     # weeeeeeeee
     with Pool(smk.threads) as pl:
         gate_results = pl.map(get_all_gates, runs)
-    # gate_results = map(get_all_gates, runs[1476:1477])
-    # gate_results = map(get_all_gates, runs[1483:1484])
 
     with (
-        gzip.open(anomaly_out, "wt") as ao,
         gzip.open(flat_out, "wt") as fo,
         gzip.open(top_out, "wt") as to,
         gzip.open(event_out, "wt") as eo,
@@ -363,8 +353,6 @@ def main(smk: Any) -> None:
             def write_tsv_line(b: TextIO, xs: list[Any]) -> None:
                 b.write("\t".join([fi, *[str(x) for x in xs]]) + "\n")
 
-            for ag in res.anomaly_gates:
-                write_tsv_line(ao, [*ag.serial])
             for fg in res.flat_gates:
                 write_tsv_line(fo, [*fg.serial])
             # last gate in the flat series is the longest, so use that one
