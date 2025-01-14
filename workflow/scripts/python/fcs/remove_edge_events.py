@@ -63,7 +63,7 @@ def main(smk: Any) -> None:
     old_dir = inpath.parent
     new_dir = files_opath.parent
 
-    df = pd.read_table(inpath)
+    df = pd.read_table(inpath, names=["file_index", "filepath"])
 
     runs = [
         Run(int(x[0]), old_dir / (n := Path(x[1]).name), new_dir / n, thresh)

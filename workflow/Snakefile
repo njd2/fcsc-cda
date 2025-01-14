@@ -175,9 +175,22 @@ rule summarize_time_errors:
         "scripts/Rmd/summarize_time_errors.Rmd"
 
 
+rule gate_time_channel:
+    input:
+        files=rules.remove_edge_events.output.files,
+        gates=rules.find_time_issues.output.top,
+    output:
+        res_int_fcs / "clean_time_channel" / "files.tsv",
+    threads: 20
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/gate_time_channel.py"
+
+
 rule compute_channel_entropies:
     input:
-        rules.remove_edge_events.output.files,
+        rules.gate_time_channel.output,
     output:
         res_int / "channel_qc" / "entropy.tsv.gz",
     threads: 20
@@ -190,8 +203,25 @@ rule compute_channel_entropies:
         "scripts/python/fcs/compute_perm_entropy.py"
 
 
+rule compute_power_spectra:
+    input:
+        rules.gate_time_channel.output,
+    output:
+        res_int / "channel_qc" / "spectra.tsv.gz",
+    threads: 20
+    params:
+        freq_steps=500,
+        max_freq=10,
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/compute_power_spectra.py"
+
+
 rule all:
     input:
         rules.summarize_metadata_errors.output,
         rules.summarize_time_errors.output,
         rules.compute_channel_entropies.output,
+        rules.gate_time_channel.output,
+        rules.compute_power_spectra.output,
