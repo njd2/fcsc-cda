@@ -71,7 +71,9 @@ def main(smk: Any) -> None:
                 # the same order, and all vectors are 'freq_steps' long
                 ss = r.spectra
                 for i in range(freq_steps):
-                    o.write("\t".join(map(str, [fi, freqs[i], *[s[i] for s in ss]])) + "\n")
+                    o.write(
+                        "\t".join(map(str, [fi, freqs[i], *[s[i] for s in ss]])) + "\n"
+                    )
 
 
 main(snakemake)  # type: ignore
