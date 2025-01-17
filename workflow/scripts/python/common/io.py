@@ -786,10 +786,10 @@ class ParsedParam(BaseModel):
         assert m is not None, "display must be like 'string,f1,f2'"
         if m[1] == "Linear":
             return LinDisplay(float(m[2]), float(m[3]))
-        elif m[2] == "Logarithmic":
+        elif m[1] == "Logarithmic":
             return LogDisplay(float(m[2]), float(m[3]))
         else:
-            assert False, "must be either linear or logarithmic"
+            assert False, f"must be either linear or logarithmic, got {v}"
 
     @property
     def _amp_type_line(self) -> list[str]:
