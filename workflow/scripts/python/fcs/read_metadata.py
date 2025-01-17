@@ -132,18 +132,18 @@ def to_tsv_line(xs: list[str]) -> str:
 
 
 def main(smk: Any) -> None:
-    root = Path(smk.input["fcs_files"])
+    file_paths = Path(smk.input["fcs_files"])
 
     meta_out = Path(smk.output["meta"])
     params_out = Path(smk.output["params"])
     nonstandard_out = Path(smk.output["nonstandard"])
     warnings_out = Path(smk.output["warnings"])
 
-    allmeta = [
-        parse_metadata(i, p)
-        for i, p in enumerate(sorted(root.iterdir()))
-        if p.name.endswith(".fcs")
-    ]
+    with open(file_paths, "r") as f:
+        allmeta = [
+            parse_metadata(int((ss := x.rstrip().split("\t"))[0]), Path(ss[1]))
+            for x in f
+        ]
 
     with open(meta_out, "wt") as f:
         header = [

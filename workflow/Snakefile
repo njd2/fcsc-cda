@@ -5,6 +5,7 @@ src = Path("resources")
 res_int = Path("results/intermediate")
 res_int_fcs = res_int / "fcs"
 res_meta = res_int / "meta"
+res_meta_std = res_meta / "standardized_fcs"
 res_time = res_int / "time"
 
 res_final = Path("results/final")
@@ -43,10 +44,23 @@ rule check_md5s:
         """
 
 
+rule enumerate_input_fcs:
+    input:
+        fcs_files=src / "fcs_wg2",
+    output:
+        res_int_fcs / "input_fcs.tsv",
+    run:
+        root = Path(input[0])
+        with open(output[0], "w") as f:
+            for i, p in enumerate(sorted(root.iterdir())):
+                if p.name.endswith(".fcs"):
+                    f.write("\t".join([str(i), str(p)]) + "\n")
+
+
 rule read_fcs_meta:
     input:
         _checksums=rules.check_md5s.output,
-        fcs_files=src / "fcs_wg2",
+        fcs_files=rules.enumerate_input_fcs.output[0],
     output:
         meta=res_meta / "standard_metadata.tsv",
         params=res_meta / "parameters.tsv",
@@ -117,6 +131,20 @@ rule remove_edge_events:
         "envs/fcs.yml"
     script:
         "scripts/python/fcs/remove_edge_events.py"
+
+
+rule read_standardized_fcs_meta:
+    input:
+        fcs_files=rules.standardize_fcs.output[0],
+    output:
+        meta=res_meta_std / "standard_metadata.tsv",
+        params=res_meta_std / "parameters.tsv",
+        warnings=res_meta_std / "warnings.tsv",
+        nonstandard=res_meta_std / "nonstandard_metadata.tsv",
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/read_metadata.py"
 
 
 rule summarize_metadata_errors:
@@ -223,6 +251,7 @@ rule all:
     input:
         rules.summarize_metadata_errors.output,
         rules.summarize_time_errors.output,
+        rules.read_standardized_fcs_meta.output,
         # rules.compute_channel_entropies.output,
         rules.gate_time_channel.output,
         # rules.compute_power_spectra.output,
