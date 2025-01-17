@@ -119,7 +119,13 @@ def standardize_fcs(c: RunConfig) -> None:
         m = {k: v.add_index(i + 1) for i, (k, v) in enumerate(pm.items())}
         new_df = p.events[[*m]]
         new_params = format_parameters(p.meta.params, m, 32)
-        other = {**{str(k): v for k, v in p.meta.deviant.items()}, **p.meta.nonstandard}
+        # shave off the dollar sign in front of deviant keywords so they don't
+        # confuse parsers in the future (particularly parameters which didn't
+        # get remapped because the parser didn't know to look for them)
+        other = {
+            **{str(k)[1:]: v for k, v in p.meta.deviant.items()},
+            **p.meta.nonstandard,
+        }
         meta = p.meta.standard.serializable(EXCLUDED_FIELDS)
         return WritableFCS(meta, new_params, other, new_df)
 
