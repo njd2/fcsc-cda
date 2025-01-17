@@ -143,6 +143,7 @@ rule summarize_metadata_errors:
 # steady rate) if this isn't true there might be an issue.
 
 
+# use pre-edge removal fcs to get full view of time channel trends/anomalies
 rule find_time_issues:
     input:
         files=rules.standardize_fcs.output[0],

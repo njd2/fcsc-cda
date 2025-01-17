@@ -10,7 +10,7 @@ from dataclasses import dataclass, astuple
 from multiprocessing import Pool
 from common.io import read_fcs
 
-X = TypeVar("X")
+X = TypeVar("X", int, float)
 
 MinEvents = NewType("MinEvents", int)
 I0 = NewType("I0", int)
@@ -45,6 +45,9 @@ class Interval(Generic[X]):
 
     x0: X
     x1: X
+
+    def __post_init__(self) -> None:
+        assert self.x0 < self.x1, "gate interval not positive"
 
 
 EventInterval = Interval[int]
@@ -191,7 +194,7 @@ def get_anomaly_gates(
         mask = (anomalies == 2) | (anomalies == 3)
         anomaly_positions = np.where(mask)[0].tolist()
         starts: list[int] = [0, *anomaly_positions]
-        ends: list[int] = [*anomaly_positions, total - 1]
+        ends: list[int] = [*[x - 1 for x in anomaly_positions], total - 1]
         codes = [*anomalies[mask].tolist(), 0]
         return [AnomalyGate(s, e, n, t, c) for s, e, c in zip(starts, ends, codes)]
 
