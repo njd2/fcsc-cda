@@ -1,0 +1,547 @@
+org	machine	machine_name	std_name	std_name_long	ex	em	width	laser
+AZGBBIO	Aurora	Time	time	Time	NA	NA	NA	NA
+AZGBBIO	Aurora	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+AZGBBIO	Aurora	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+AZGBBIO	Aurora	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+AZGBBIO	Aurora	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+AZGBBIO	Aurora	V3-A	v450	V450/PB 	405	458	15	violet
+AZGBBIO	Aurora	V7-A	v500	V500-C/Aqua	405	542	17	violet
+AZGBBIO	Aurora	B2-A	fitc	FITC	488	525	17	blue
+AZGBBIO	Aurora	YG1-A	pe	PE	561	577	20	yellow
+AZGBBIO	Aurora	YG9-A	pc7	PE-Cy7	561	780	30	yellow
+AZGBBIO	Aurora	B9-A	pc55	PerCP-Cy5.5	488	697	19	blue
+AZGBBIO	Aurora	R1-A	apc	APC	640	660	17	red
+AZGBBIO	Aurora	R7-A	ac7	APC-Cy7	640	783	23	red
+AZGBBIO	SymphonyA3	Time	time	Time	NA	NA	NA	NA
+AZGBBIO	SymphonyA3	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+AZGBBIO	SymphonyA3	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+AZGBBIO	SymphonyA3	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+AZGBBIO	SymphonyA3	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+AZGBBIO	SymphonyA3	BV421-A	v450	V450/PB 	405	450	40	violet
+AZGBBIO	SymphonyA3	BV480-A	v500	V500-C/Aqua	405	510	20	violet
+AZGBBIO	SymphonyA3	FITC-A	fitc	FITC	488	515	20	blue
+AZGBBIO	SymphonyA3	PE-A	pe	PE	532	575	25	green
+AZGBBIO	SymphonyA3	PE-Cy7-A	pc7	PE-Cy7	532	780	60	green
+AZGBBIO	SymphonyA3	BB700-A	pc55	PerCP-Cy5.5	488	710	50	blue
+AZGBBIO	SymphonyA3	APC-A	apc	APC	640	670	30	red
+AZGBBIO	SymphonyA3	APC-Cy7-A	ac7	APC-Cy7	640	780	60	red
+AZGBBIO	SymphonyA5	Time	time	Time	NA	NA	NA	NA
+AZGBBIO	SymphonyA5	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+AZGBBIO	SymphonyA5	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+AZGBBIO	SymphonyA5	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+AZGBBIO	SymphonyA5	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+AZGBBIO	SymphonyA5	BV421-A	v450	V450/PB 	405	450	40	violet
+AZGBBIO	SymphonyA5	BV480-A	v500	V500-C/Aqua	405	510	20	violet
+AZGBBIO	SymphonyA5	FITC-A	fitc	FITC	488	515	20	blue
+AZGBBIO	SymphonyA5	PE-A	pe	PE	532	575	25	green
+AZGBBIO	SymphonyA5	PE-Cy7-A	pc7	PE-Cy7	532	780	60	green
+AZGBBIO	SymphonyA5	BB700-A	pc55	PerCP-Cy5.5	488	710	50	blue
+AZGBBIO	SymphonyA5	APC-A	apc	APC	640	670	30	red
+AZGBBIO	SymphonyA5	APC-Cy7-A	ac7	APC-Cy7	640	780	60	red
+AZSSF	Aurora	Time	time	Time	NA	NA	NA	NA
+AZSSF	Aurora	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+AZSSF	Aurora	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+AZSSF	Aurora	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+AZSSF	Aurora	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+AZSSF	Aurora	V3-A	v450	V450/PB 	405	458	15	violet
+AZSSF	Aurora	V7-A	v500	V500-C/Aqua	405	542	17	violet
+AZSSF	Aurora	B2-A	fitc	FITC	488	525	17	blue
+AZSSF	Aurora	B4-A	pe	PE	488	581	19	blue
+AZSSF	Aurora	B13-A	pc7	PE-Cy7	488	783	23	blue
+AZSSF	Aurora	B9-A	pc55	PerCP-Cy5.5	488	697	19	blue
+AZSSF	Aurora	R1-A	apc	APC	640	660	17	red
+AZSSF	Aurora	R7-A	ac7	APC-Cy7	640	783	23	red
+AgilentSC	Quanteon	Time	time	Time	NA	NA	NA	NA
+AgilentSC	Quanteon	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+AgilentSC	Quanteon	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+AgilentSC	Quanteon	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+AgilentSC	Quanteon	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+AgilentSC	Quanteon	V445-A	v450	V450/PB 	405	445	45	violet
+AgilentSC	Quanteon	V530-A	v500	V500-C/Aqua	405	525	45	violet
+AgilentSC	Quanteon	B530-A	fitc	FITC	488	525	45	blue
+AgilentSC	Quanteon	Y586-A	pe	PE	561	586	20	yellow
+AgilentSC	Quanteon	Y780-A	pc7	PE-Cy7	561	780	60	yellow
+AgilentSC	Quanteon	B695-A	pc55	PerCP-Cy5.5	488	695	40	blue
+AgilentSC	Quanteon	R667-A	apc	APC	637	667	30	red
+AgilentSC	Quanteon	R780-A	ac7	APC-Cy7	637	780	60	red
+AgilentSD	Penteon	Time	time	Time	NA	NA	NA	NA
+AgilentSD	Penteon	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+AgilentSD	Penteon	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+AgilentSD	Penteon	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+AgilentSD	Penteon	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+AgilentSD	Penteon	V445-A	v450	V450/PB 	405	445	45	violet
+AgilentSD	Penteon	V525-A	v500	V500-C/Aqua	405	525	45	violet
+AgilentSD	Penteon	B525-A	fitc	FITC	488	525	45	blue
+AgilentSD	Penteon	Y586-A	pe	PE	561	586	20	yellow
+AgilentSD	Penteon	Y780-A	pc7	PE-Cy7	561	780	60	yellow
+AgilentSD	Penteon	B695-A	pc55	PerCP-Cy5.5	488	695	40	blue
+AgilentSD	Penteon	R667-A	apc	APC	637	667	30	red
+AgilentSD	Penteon	R780-A	ac7	APC-Cy7	637	780	60	red
+BCLS	Cytoflex	Time	time	Time	NA	NA	NA	NA
+BCLS	Cytoflex	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BCLS	Cytoflex	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BCLS	Cytoflex	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BCLS	Cytoflex	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BCLS	Cytoflex	FL9-A	v450	V450/PB 	405	450	45	violet
+BCLS	Cytoflex	FL10-A	v500	V500-C/Aqua	405	525	40	violet
+BCLS	Cytoflex	FL1-A	fitc	FITC	488	525	40	blue
+BCLS	Cytoflex	FL2-A	pe	PE	488	585	42	blue
+BCLS	Cytoflex	FL5-A	pc7	PE-Cy7	488	780	60	blue
+BCLS	Cytoflex	FL3-A	pc55	PerCP-Cy5.5	488	690	50	blue
+BCLS	Cytoflex	FL6-A	apc	APC	638	660	20	red
+BCLS	Cytoflex	FL8-A	ac7	APC-Cy7	638	780	60	red
+BCLS	CytoflexLX	Time	time	Time	NA	NA	NA	NA
+BCLS	CytoflexLX	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BCLS	CytoflexLX	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BCLS	CytoflexLX	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BCLS	CytoflexLX	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BCLS	CytoflexLX	FL12-A	v450	V450/PB 	405	450	45	violet
+BCLS	CytoflexLX	FL13-A	v500	V500-C/Aqua	405	525	40	violet
+BCLS	CytoflexLX	FL1-A	fitc	FITC	488	525	40	blue
+BCLS	CytoflexLX	FL4-A	pe	PE	561	585	42	yellow
+BCLS	CytoflexLX	FL8-A	pc7	PE-Cy7	561	763	43	yellow
+BCLS	CytoflexLX	FL3-A	pc55	PerCP-Cy5.5	488	690	50	blue
+BCLS	CytoflexLX	FL9-A	apc	APC	638	660	10	red
+BCLS	CytoflexLX	FL11-A	ac7	APC-Cy7	638	763	43	red
+BCLS	CytoflexLXNUV	Time	time	Time	NA	NA	NA	NA
+BCLS	CytoflexLXNUV	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BCLS	CytoflexLXNUV	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BCLS	CytoflexLXNUV	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BCLS	CytoflexLXNUV	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BCLS	CytoflexLXNUV	FL12-A	v450	V450/PB 	405	450	45	violet
+BCLS	CytoflexLXNUV	FL13-A	v500	V500-C/Aqua	405	525	40	violet
+BCLS	CytoflexLXNUV	FL1-A	fitc	FITC	488	525	40	blue
+BCLS	CytoflexLXNUV	FL4-A	pe	PE	561	585	42	yellow
+BCLS	CytoflexLXNUV	FL8-A	pc7	PE-Cy7	561	763	43	yellow
+BCLS	CytoflexLXNUV	FL3-A	pc55	PerCP-Cy5.5	488	690	50	blue
+BCLS	CytoflexLXNUV	FL9-A	apc	APC	638	660	10	red
+BCLS	CytoflexLXNUV	FL11-A	ac7	APC-Cy7	638	763	43	red
+BDSJ	Lyric	Time	time	Time	NA	NA	NA	NA
+BDSJ	Lyric	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BDSJ	Lyric	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BDSJ	Lyric	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BDSJ	Lyric	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BDSJ	Lyric	Pacific Blue-A	v450	V450/PB 	405	448	45	violet
+BDSJ	Lyric	Aqua Dye-A	v500	V500-C/Aqua	405	528	45	violet
+BDSJ	Lyric	FITC-A	fitc	FITC	488	527	32	blue
+BDSJ	Lyric	PE-A	pe	PE	488	586	42	blue
+BDSJ	Lyric	PE-Cy7-A	pc7	PE-Cy7	488	783	56	blue
+BDSJ	Lyric	PerCP-Cy5.5-A	pc55	PerCP-Cy5.5	488	700	54	blue
+BDSJ	Lyric	APC-A	apc	APC	640	660	10	red
+BDSJ	Lyric	APC-Cy7-A	ac7	APC-Cy7	640	783	56	red
+BDSJ	Lyric-2	Time	time	Time	NA	NA	NA	NA
+BDSJ	Lyric-2	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BDSJ	Lyric-2	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BDSJ	Lyric-2	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BDSJ	Lyric-2	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BDSJ	Lyric-2	Pacific Blue-A	v450	V450/PB 	405	448	45	violet
+BDSJ	Lyric-2	Aqua Dye-A	v500	V500-C/Aqua	405	528	45	violet
+BDSJ	Lyric-2	FITC-A	fitc	FITC	488	527	32	blue
+BDSJ	Lyric-2	PE-A	pe	PE	488	586	42	blue
+BDSJ	Lyric-2	PE-Cy7-A	pc7	PE-Cy7	488	783	56	blue
+BDSJ	Lyric-2	PerCP-Cy5.5-A	pc55	PerCP-Cy5.5	488	700	54	blue
+BDSJ	Lyric-2	APC-A	apc	APC	640	660	10	red
+BDSJ	Lyric-2	APC-Cy7-A	ac7	APC-Cy7	640	783	56	red
+BMSSeattle	CantoSORP-2	Time	time	Time	NA	NA	NA	NA
+BMSSeattle	CantoSORP-2	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BMSSeattle	CantoSORP-2	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BMSSeattle	CantoSORP-2	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BMSSeattle	CantoSORP-2	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BMSSeattle	CantoSORP-2	405/450/50-A	v450	V450/PB 	405	450	50	violet
+BMSSeattle	CantoSORP-2	405/525/50-A	v500	V500-C/Aqua	405	525	50	violet
+BMSSeattle	CantoSORP-2	488/530/30-A	fitc	FITC	488	530	30	blue
+BMSSeattle	CantoSORP-2	488/586/15-A	pe	PE	488	586	15	blue
+BMSSeattle	CantoSORP-2	488/780/60-A	pc7	PE-Cy7	488	780	60	blue
+BMSSeattle	CantoSORP-2	488/710/50-A	pc55	PerCP-Cy5.5	488	710	50	blue
+BMSSeattle	CantoSORP-2	640/670/30-A	apc	APC	640	670	30	red
+BMSSeattle	CantoSORP-2	640/780/60-A	ac7	APC-Cy7	640	780	60	red
+BMSSeattle	CantoSORP-3	Time	time	Time	NA	NA	NA	NA
+BMSSeattle	CantoSORP-3	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BMSSeattle	CantoSORP-3	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BMSSeattle	CantoSORP-3	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BMSSeattle	CantoSORP-3	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BMSSeattle	CantoSORP-3	405/450/50-A	v450	V450/PB 	405	450	50	violet
+BMSSeattle	CantoSORP-3	405/525/50-A	v500	V500-C/Aqua	405	525	50	violet
+BMSSeattle	CantoSORP-3	488/530/30-A	fitc	FITC	488	530	30	blue
+BMSSeattle	CantoSORP-3	488/586/15-A	pe	PE	488	586	15	blue
+BMSSeattle	CantoSORP-3	488/780/60-A	pc7	PE-Cy7	488	780	60	blue
+BMSSeattle	CantoSORP-3	488/710/50-A	pc55	PerCP-Cy5.5	488	710	50	blue
+BMSSeattle	CantoSORP-3	640/670/30-A	apc	APC	640	670	30	red
+BMSSeattle	CantoSORP-3	640/780/60-A	ac7	APC-Cy7	640	780	60	red
+BMSWarren	CantoSORP	Time	time	Time	NA	NA	NA	NA
+BMSWarren	CantoSORP	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BMSWarren	CantoSORP	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BMSWarren	CantoSORP	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BMSWarren	CantoSORP	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BMSWarren	CantoSORP	405/450/50-A	v450	V450/PB 	405	450	50	violet
+BMSWarren	CantoSORP	405/525/50-A	v500	V500-C/Aqua	405	525	50	violet
+BMSWarren	CantoSORP	488/530/30-A	fitc	FITC	488	530	30	blue
+BMSWarren	CantoSORP	488/586/15-A	pe	PE	488	586	15	blue
+BMSWarren	CantoSORP	488/780/60-A	pc7	PE-Cy7	488	780	60	blue
+BMSWarren	CantoSORP	488/710/50-A	pc55	PerCP-Cy5.5	488	710	50	blue
+BMSWarren	CantoSORP	640/670/30-A	apc	APC	640	670	30	red
+BMSWarren	CantoSORP	640/780/60-A	ac7	APC-Cy7	640	780	60	red
+BMSWarren	MQA10-1	HDR-T	time	Time	NA	NA	NA	NA
+BMSWarren	MQA10-1	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BMSWarren	MQA10-1	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BMSWarren	MQA10-1	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BMSWarren	MQA10-1	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BMSWarren	MQA10-1	V1-A	v450	V450/PB 	405	450	50	violet
+BMSWarren	MQA10-1	V2-A	v500	V500-C/Aqua	405	525	50	violet
+BMSWarren	MQA10-1	B1-A	fitc	FITC	488	525	50	blue
+BMSWarren	MQA10-1	B2-A	pe	PE	488	585	40	blue
+BMSWarren	MQA10-1	B4-A	pc7	PE-Cy7	488	789	78	blue
+BMSWarren	MQA10-1	B3-A	pc55	PerCP-Cy5.5	488	692	75	blue
+BMSWarren	MQA10-1	R1-A	apc	APC	640	692	75	red
+BMSWarren	MQA10-1	R2-A	ac7	APC-Cy7	640	789	78	red
+BMSWarren	MQA10-2	HDR-T	time	Time	NA	NA	NA	NA
+BMSWarren	MQA10-2	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+BMSWarren	MQA10-2	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+BMSWarren	MQA10-2	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+BMSWarren	MQA10-2	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+BMSWarren	MQA10-2	V1-A	v450	V450/PB 	405	450	50	violet
+BMSWarren	MQA10-2	V2-A	v500	V500-C/Aqua	405	525	50	violet
+BMSWarren	MQA10-2	B1-A	fitc	FITC	488	525	50	blue
+BMSWarren	MQA10-2	B2-A	pe	PE	488	585	40	blue
+BMSWarren	MQA10-2	B4-A	pc7	PE-Cy7	488	789	78	blue
+BMSWarren	MQA10-2	B3-A	pc55	PerCP-Cy5.5	488	692	75	blue
+BMSWarren	MQA10-2	R1-A	apc	APC	640	692	75	red
+BMSWarren	MQA10-2	R2-A	ac7	APC-Cy7	640	789	78	red
+CellBio	CellStream	Time	time	Time	NA	NA	NA	NA
+CellBio	CellStream	NA	fsc_a	FSC-A	NA	NA	NA	NA
+CellBio	CellStream	NA	fsc_h	FSC-H	NA	NA	NA	NA
+CellBio	CellStream	NA	ssc_a	SSC-A	NA	NA	NA	NA
+CellBio	CellStream	NA	ssc_h	SSC-H	NA	NA	NA	NA
+CellBio	CellStream	UCI_405 - 456/51 - A2	v450	V450/PB 	405	456	51	violet
+CellBio	CellStream	UCI_405 - 528/46 - A3	v500	V500-C/Aqua	405	528	46	violet
+CellBio	CellStream	UCI_488 - 528/46 - C3	fitc	FITC	488	528	46	blue
+CellBio	CellStream	UCI_488 - 583/24 - C4	pe	PE	488	583	24	blue
+CellBio	CellStream	UCI_488 - 773/56 - C1	pc7	PE-Cy7	488	773	56	blue
+CellBio	CellStream	UCI_488 - 702/87 - C6	pc55	PerCP-Cy5.5	488	702	87	blue
+CellBio	CellStream	UCI_375/642 - 702/87 - B6	apc	APC	642	702	87	red
+CellBio	CellStream	UCI_375/642 - 773/56 - B1	ac7	APC-Cy7	642	773	56	red
+CellBio	CytoflexS	Time	time	Time	NA	NA	NA	NA
+CellBio	CytoflexS	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+CellBio	CytoflexS	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+CellBio	CytoflexS	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+CellBio	CytoflexS	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+CellBio	CytoflexS	FL6-A	v450	V450/PB 	405	450	45	violet
+CellBio	CytoflexS	FL7-A	v500	V500-C/Aqua	405	525	40	violet
+CellBio	CytoflexS	FL1-A	fitc	FITC	488	525	40	blue
+CellBio	CytoflexS	FL9-A	pe	PE	561	585	42	yellow
+CellBio	CytoflexS	FL12-A	pc7	PE-Cy7	561	780	60	yellow
+CellBio	CytoflexS	FL2-A	pc55	PerCP-Cy5.5	488	690	50	blue
+CellBio	CytoflexS	FL3-A	apc	APC	638	675	30	red
+CellBio	CytoflexS	FL5-A	ac7	APC-Cy7	638	780	60	red
+FDACBER	AriaIII	Time	time	Time	NA	NA	NA	NA
+FDACBER	AriaIII	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+FDACBER	AriaIII	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+FDACBER	AriaIII	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+FDACBER	AriaIII	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+FDACBER	AriaIII	BV421-A	v450	V450/PB 	407	450	50	violet
+FDACBER	AriaIII	AmCyan-A	v500	V500-C/Aqua	407	525	50	violet
+FDACBER	AriaIII	Alexa Fluor 488-A	fitc	FITC	488	530	30	blue
+FDACBER	AriaIII	PE-A	pe	PE	561	582	15	yellow
+FDACBER	AriaIII	PE-Cy7-A	pc7	PE-Cy7	561	780	60	yellow
+FDACBER	AriaIII	PerCP-A	pc55	PerCP-Cy5.5	488	695	40	blue
+FDACBER	AriaIII	APC-A	apc	APC	633	660	20	red
+FDACBER	AriaIII	APC-Cy7-A	ac7	APC-Cy7	633	780	60	red
+FDACBER	Canto10	Time	time	Time	NA	NA	NA	NA
+FDACBER	Canto10	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+FDACBER	Canto10	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+FDACBER	Canto10	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+FDACBER	Canto10	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+FDACBER	Canto10	Alexa Fluor 430-A	v450	V450/PB 	405	450	50	violet
+FDACBER	Canto10	AmCyan-A	v500	V500-C/Aqua	405	525	50	violet
+FDACBER	Canto10	Alexa Fluor 488-A	fitc	FITC	488	530	30	blue
+FDACBER	Canto10	PE-A	pe	PE	488	575	25	blue
+FDACBER	Canto10	PE-Cy7-A	pc7	PE-Cy7	488	780	60	blue
+FDACBER	Canto10	7-AAD-A	pc55	PerCP-Cy5.5	488	695	40	blue
+FDACBER	Canto10	APC-A	apc	APC	640	670	30	red
+FDACBER	Canto10	APC-Cy7-A	ac7	APC-Cy7	640	780	60	red
+FDACBER	CantoII-1	Time	time	Time	NA	NA	NA	NA
+FDACBER	CantoII-1	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+FDACBER	CantoII-1	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+FDACBER	CantoII-1	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+FDACBER	CantoII-1	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+FDACBER	CantoII-1	Pacific Blue-A	v450	V450/PB 	405	450	50	violet
+FDACBER	CantoII-1	AmCyan-A	v500	V500-C/Aqua	405	510	50	violet
+FDACBER	CantoII-1	Alexa Fluor 488-A	fitc	FITC	488	530	30	blue
+FDACBER	CantoII-1	PE-A	pe	PE	488	585	42	blue
+FDACBER	CantoII-1	PE-Cy7-A	pc7	PE-Cy7	488	780	60	blue
+FDACBER	CantoII-1	PerCP-Cy5-5-A	pc55	PerCP-Cy5.5	488	715	90	blue
+FDACBER	CantoII-1	APC-A	apc	APC	633	660	20	red
+FDACBER	CantoII-1	APC-Cy7-A	ac7	APC-Cy7	633	780	60	red
+FDACBER	Fortessa	Time	time	Time	NA	NA	NA	NA
+FDACBER	Fortessa	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+FDACBER	Fortessa	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+FDACBER	Fortessa	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+FDACBER	Fortessa	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+FDACBER	Fortessa	BV421-A	v450	V450/PB 	405	450	50	violet
+FDACBER	Fortessa	BV510-A	v500	V500-C/Aqua	405	525	50	violet
+FDACBER	Fortessa	Alexa Fluor 488-A	fitc	FITC	488	530	30	blue
+FDACBER	Fortessa	PE-A	pe	PE	561	586	15	yellow
+FDACBER	Fortessa	PE-Cy7-A	pc7	PE-Cy7	561	780	60	yellow
+FDACBER	Fortessa	PerCP-A	pc55	PerCP-Cy5.5	488	710	50	blue
+FDACBER	Fortessa	APC-A	apc	APC	640	670	30	red
+FDACBER	Fortessa	APC-Cy7-A	ac7	APC-Cy7	640	780	60	red
+ISAC	BRZE5	TIME	time	Time	NA	NA	NA	NA
+ISAC	BRZE5	FS00-A	fsc_a	FSC-A	NA	NA	NA	NA
+ISAC	BRZE5	FS00-H	fsc_h	FSC-H	NA	NA	NA	NA
+ISAC	BRZE5	SS02-A	ssc_a	SSC-A	NA	NA	NA	NA
+ISAC	BRZE5	SS02-H	ssc_h	SSC-H	NA	NA	NA	NA
+ISAC	BRZE5	FL17-A	v450	V450/PB 	405	460	22	violet
+ISAC	BRZE5	FL20-A	v500	V500-C/Aqua	405	525	50	violet
+ISAC	BRZE5	FL03-A	fitc	FITC	488	525	35	blue
+ISAC	BRZE5	FL25-A	pe	PE	561	583	30	yellow
+ISAC	BRZE5	FL23-A	pc7	PE-Cy7	561	789	78	yellow
+ISAC	BRZE5	FL06-A	pc55	PerCP-Cy5.5	488	692	80	blue
+ISAC	BRZE5	FL29-A	apc	APC	640	670	30	red
+ISAC	BRZE5	FL27-A	ac7	APC-Cy7	640	775	50	red
+ISAC	CantoII-1	Time	time	Time	NA	NA	NA	NA
+ISAC	CantoII-1	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+ISAC	CantoII-1	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+ISAC	CantoII-1	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+ISAC	CantoII-1	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+ISAC	CantoII-1	450/50 (405)-A	v450	V450/PB 	405	450	50	violet
+ISAC	CantoII-1	510/50 (405)-A	v500	V500-C/Aqua	405	510	50	violet
+ISAC	CantoII-1	530/30 (488)-A	fitc	FITC	488	530	30	blue
+ISAC	CantoII-1	585/42 (488)-A	pe	PE	488	585	42	blue
+ISAC	CantoII-1	780/60 (488)-A	pc7	PE-Cy7	488	780	60	blue
+ISAC	CantoII-1	670LP (488)-A	pc55	PerCP-Cy5.5	488	715	90	blue
+ISAC	CantoII-1	660/20 (633)-A	apc	APC	633	660	20	red
+ISAC	CantoII-1	780/60 (633)-A	ac7	APC-Cy7	633	780	60	red
+ISAC	Lyric-1	Time	time	Time	NA	NA	NA	NA
+ISAC	Lyric-1	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+ISAC	Lyric-1	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+ISAC	Lyric-1	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+ISAC	Lyric-1	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+ISAC	Lyric-1	V450-A	v450	V450/PB 	405	448	45	violet
+ISAC	Lyric-1	V500-C-A	v500	V500-C/Aqua	405	528	45	violet
+ISAC	Lyric-1	FITC-A	fitc	FITC	488	527	32	blue
+ISAC	Lyric-1	PE-A	pe	PE	488	586	42	blue
+ISAC	Lyric-1	PE-Cy7-A	pc7	PE-Cy7	488	783	56	blue
+ISAC	Lyric-1	PerCP-Cy5.5-A	pc55	PerCP-Cy5.5	488	700	54	blue
+ISAC	Lyric-1	APC-A	apc	APC	640	660	10	red
+ISAC	Lyric-1	APC-Cy7-A	ac7	APC-Cy7	640	783	56	red
+KITE	CytoflexS	Time	time	Time	NA	NA	NA	NA
+KITE	CytoflexS	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+KITE	CytoflexS	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+KITE	CytoflexS	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+KITE	CytoflexS	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+KITE	CytoflexS	FL6-A	v450	V450/PB 	405	450	50	violet
+KITE	CytoflexS	FL7-A	v500	V500-C/Aqua	405	530	30	violet
+KITE	CytoflexS	FL1-A	fitc	FITC	488	530	40	blue
+KITE	CytoflexS	FL10-A	pe	PE	561	585	42	yellow
+KITE	CytoflexS	FL13-A	pc7	PE-Cy7	561	780	60	yellow
+KITE	CytoflexS	FL2-A	pc55	PerCP-Cy5.5	488	695	40	blue
+KITE	CytoflexS	FL3-A	apc	APC	638	670	30	red
+KITE	CytoflexS	FL5-A	ac7	APC-Cy7	638	780	60	red
+LMNXSEA	CellStream-1	Time	time	Time	NA	NA	NA	NA
+LMNXSEA	CellStream-1	NA	fsc_a	FSC-A	NA	NA	NA	NA
+LMNXSEA	CellStream-1	NA	fsc_h	FSC-H	NA	NA	NA	NA
+LMNXSEA	CellStream-1	NA	ssc_a	SSC-A	NA	NA	NA	NA
+LMNXSEA	CellStream-1	NA	ssc_h	SSC-H	NA	NA	NA	NA
+LMNXSEA	CellStream-1	UCI_405 - 456/51 - A2	v450	V450/PB 	405	456	51	violet
+LMNXSEA	CellStream-1	UCI_405 - 528/46 - A3	v500	V500-C/Aqua	405	528	46	violet
+LMNXSEA	CellStream-1	UCI_488 / 730 - 528/46 - C3	fitc	FITC	488	528	46	blue
+LMNXSEA	CellStream-1	UCI_488 / 730 - 583/24 - C4	pe	PE	561	583	24	yellow
+LMNXSEA	CellStream-1	UCI_488 / 730 - 773/56 - C1	pc7	PE-Cy7	561	773	56	yellow
+LMNXSEA	CellStream-1	UCI_488 / 730 - 702/87 - C6	pc55	PerCP-Cy5.5	488	702	87	blue
+LMNXSEA	CellStream-1	UCI_375 / 642 - 702/87 - B6	apc	APC	642	702	87	red
+LMNXSEA	CellStream-1	UCI_375 / 642 - 773/56 - B1	ac7	APC-Cy7	642	773	56	red
+LMNXSEA	CellStream-2	Time	time	Time	NA	NA	NA	NA
+LMNXSEA	CellStream-2	NA	fsc_a	FSC-A	NA	NA	NA	NA
+LMNXSEA	CellStream-2	NA	fsc_h	FSC-H	NA	NA	NA	NA
+LMNXSEA	CellStream-2	NA	ssc_a	SSC-A	NA	NA	NA	NA
+LMNXSEA	CellStream-2	NA	ssc_h	SSC-H	NA	NA	NA	NA
+LMNXSEA	CellStream-2	UCI_405 - 456/51 - A2	v450	V450/PB 	405	456	51	violet
+LMNXSEA	CellStream-2	UCI_405 - 528/46 - A3	v500	V500-C/Aqua	405	528	46	violet
+LMNXSEA	CellStream-2	UCI_488 / 730 - 528/46 - C3	fitc	FITC	488	528	46	blue
+LMNXSEA	CellStream-2	UCI_488 / 730 - 583/24 - C4	pe	PE	561	583	24	yellow
+LMNXSEA	CellStream-2	UCI_488 / 730 - 773/56 - C1	pc7	PE-Cy7	561	773	56	yellow
+LMNXSEA	CellStream-2	UCI_488 / 730 - 702/87 - C6	pc55	PerCP-Cy5.5	488	702	87	blue
+LMNXSEA	CellStream-2	UCI_375 / 642 - 702/87 - B6	apc	APC	642	702	87	red
+LMNXSEA	CellStream-2	UCI_375 / 642 - 773/56 - B1	ac7	APC-Cy7	642	773	56	red
+LMNXSEA	ImageStreamX-1	Time	time	Time	NA	NA	NA	NA
+LMNXSEA	ImageStreamX-1	NA	fsc_a	FSC-A	NA	NA	NA	NA
+LMNXSEA	ImageStreamX-1	NA	fsc_h	FSC-H	NA	NA	NA	NA
+LMNXSEA	ImageStreamX-1	NA	ssc_a	SSC-A	NA	NA	NA	NA
+LMNXSEA	ImageStreamX-1	NA	ssc_h	SSC-H	NA	NA	NA	NA
+LMNXSEA	ImageStreamX-1	Intensity_MC_Ch07	v450	V450/PB 	405	475	45	violet
+LMNXSEA	ImageStreamX-1	Intensity_MC_Ch08	v500	V500-C/Aqua	405	537	65	violet
+LMNXSEA	ImageStreamX-1	Intensity_MC_Ch02	fitc	FITC	488	528	65	blue
+LMNXSEA	ImageStreamX-1	Intensity_MC_Ch03	pe	PE	488	577	35	blue
+LMNXSEA	ImageStreamX-1	Intensity_MC_Ch06	pc7	PE-Cy7	488	762	35	blue
+LMNXSEA	ImageStreamX-1	Intensity_MC_Ch05	pc55	PerCP-Cy5.5	488	702	85	blue
+LMNXSEA	ImageStreamX-1	Intensity_MC_Ch11	apc	APC	642	702	85	red
+LMNXSEA	ImageStreamX-1	Intensity_MC_Ch12	ac7	APC-Cy7	642	762	35	red
+MSKCC	Aurora	Time	time	Time	NA	NA	NA	NA
+MSKCC	Aurora	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+MSKCC	Aurora	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+MSKCC	Aurora	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+MSKCC	Aurora	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+MSKCC	Aurora	V3-A	v450	V450/PB 	405	458	15	violet
+MSKCC	Aurora	V7-A	v500	V500-C/Aqua	405	542	17	violet
+MSKCC	Aurora	B2-A	fitc	FITC	488	525	17	blue
+MSKCC	Aurora	YG1-A	pe	PE	561	577	20	yellow
+MSKCC	Aurora	YG9-A	pc7	PE-Cy7	561	780	30	yellow
+MSKCC	Aurora	B9-A	pc55	PerCP-Cy5.5	488	697	19	blue
+MSKCC	Aurora	R1-A	apc	APC	640	661	17	red
+MSKCC	Aurora	R7-A	ac7	APC-Cy7	640	783	23	red
+NIBSC	AriaIII	Time	time	Time	NA	NA	NA	NA
+NIBSC	AriaIII	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+NIBSC	AriaIII	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+NIBSC	AriaIII	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+NIBSC	AriaIII	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+NIBSC	AriaIII	Pacific Blue-A	v450	V450/PB 	407	450	40	violet
+NIBSC	AriaIII	AmCyan-A	v500	V500-C/Aqua	407	510	50	violet
+NIBSC	AriaIII	FITC-A	fitc	FITC	488	530	30	blue
+NIBSC	AriaIII	PE-A	pe	PE	561	585	15	yellow
+NIBSC	AriaIII	PE-Cy7-A	pc7	PE-Cy7	561	780	60	yellow
+NIBSC	AriaIII	PerCP-A	pc55	PerCP-Cy5.5	488	695	40	blue
+NIBSC	AriaIII	APC-A	apc	APC	633	660	20	red
+NIBSC	AriaIII	APC-Cy7-A	ac7	APC-Cy7	633	780	60	red
+NIBSC	CantoII-1	Time	time	Time	NA	NA	NA	NA
+NIBSC	CantoII-1	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+NIBSC	CantoII-1	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+NIBSC	CantoII-1	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+NIBSC	CantoII-1	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+NIBSC	CantoII-1	Pacific Blue-A	v450	V450/PB 	405	450	50	violet
+NIBSC	CantoII-1	AmCyan-A	v500	V500-C/Aqua	405	510	50	violet
+NIBSC	CantoII-1	FITC-A	fitc	FITC	488	530	30	blue
+NIBSC	CantoII-1	PE-A	pe	PE	488	585	42	blue
+NIBSC	CantoII-1	PE-Cy7-A	pc7	PE-Cy7	488	780	60	blue
+NIBSC	CantoII-1	PerCP-Cy5-5-A	pc55	PerCP-Cy5.5	488	715	90	blue
+NIBSC	CantoII-1	APC-A	apc	APC	633	660	20	red
+NIBSC	CantoII-1	APC-Cy7-A	ac7	APC-Cy7	633	780	60	red
+NIBSC	CantoII-2	Time	time	Time	NA	NA	NA	NA
+NIBSC	CantoII-2	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+NIBSC	CantoII-2	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+NIBSC	CantoII-2	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+NIBSC	CantoII-2	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+NIBSC	CantoII-2	Pacific Blue-A	v450	V450/PB 	405	450	50	violet
+NIBSC	CantoII-2	AmCyan-A	v500	V500-C/Aqua	405	510	50	violet
+NIBSC	CantoII-2	FITC-A	fitc	FITC	488	530	30	blue
+NIBSC	CantoII-2	PE-A	pe	PE	488	585	42	blue
+NIBSC	CantoII-2	PE-Cy7-A	pc7	PE-Cy7	488	780	60	blue
+NIBSC	CantoII-2	PerCP-Cy5-5-A	pc55	PerCP-Cy5.5	488	715	90	blue
+NIBSC	CantoII-2	APC-A	apc	APC	633	660	20	red
+NIBSC	CantoII-2	APC-Cy7-A	ac7	APC-Cy7	633	780	60	red
+NISTGB-LW	AttuneNXT	Time	time	Time	NA	NA	NA	NA
+NISTGB-LW	AttuneNXT	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+NISTGB-LW	AttuneNXT	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+NISTGB-LW	AttuneNXT	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+NISTGB-LW	AttuneNXT	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+NISTGB-LW	AttuneNXT	VL1-A	v450	V450/PB 	405	440	50	violet
+NISTGB-LW	AttuneNXT	VL2-A	v500	V500-C/Aqua	405	512	25	violet
+NISTGB-LW	AttuneNXT	BL1-A	fitc	FITC	488	530	30	blue
+NISTGB-LW	AttuneNXT	YL1-A	pe	PE	561	585	16	yellow
+NISTGB-LW	AttuneNXT	YL4-A	pc7	PE-Cy7	561	780	60	yellow
+NISTGB-LW	AttuneNXT	BL3-A	pc55	PerCP-Cy5.5	488	695	40	blue
+NISTGB-LW	AttuneNXT	RL1-A	apc	APC	638	670	14	red
+NISTGB-LW	AttuneNXT	RL3-A	ac7	APC-Cy7	638	780	60	red
+NISTGB-LW	CytoflexLX	Time	time	Time	NA	NA	NA	NA
+NISTGB-LW	CytoflexLX	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+NISTGB-LW	CytoflexLX	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+NISTGB-LW	CytoflexLX	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+NISTGB-LW	CytoflexLX	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+NISTGB-LW	CytoflexLX	FL12-A	v450	V450/PB 	405	450	45	violet
+NISTGB-LW	CytoflexLX	FL13-A	v500	V500-C/Aqua	405	525	40	violet
+NISTGB-LW	CytoflexLX	FL1-A	fitc	FITC	488	525	40	blue
+NISTGB-LW	CytoflexLX	FL4-A	pe	PE	561	585	42	yellow
+NISTGB-LW	CytoflexLX	FL8-A	pc7	PE-Cy7	561	763	43	yellow
+NISTGB-LW	CytoflexLX	FL3-A	pc55	PerCP-Cy5.5	488	690	50	blue
+NISTGB-LW	CytoflexLX	FL9-A	apc	APC	638	660	10	red
+NISTGB-LW	CytoflexLX	FL11-A	ac7	APC-Cy7	638	763	43	red
+Q2LabSol	Aurora	Time	time	Time	NA	NA	NA	NA
+Q2LabSol	Aurora	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+Q2LabSol	Aurora	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+Q2LabSol	Aurora	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+Q2LabSol	Aurora	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+Q2LabSol	Aurora	V3-A	v450	V450/PB 	405	458	15	violet
+Q2LabSol	Aurora	V7-A	v500	V500-C/Aqua	405	542	17	violet
+Q2LabSol	Aurora	B2-A	fitc	FITC	488	525	17	blue
+Q2LabSol	Aurora	YG1-A	pe	PE	561	577	20	yellow
+Q2LabSol	Aurora	YG9-A	pc7	PE-Cy7	561	780	30	yellow
+Q2LabSol	Aurora	B9-A	pc55	PerCP-Cy5.5	488	697	19	blue
+Q2LabSol	Aurora	R1-A	apc	APC	640	661	17	red
+Q2LabSol	Aurora	R7-A	ac7	APC-Cy7	640	783	23	red
+Q2LabSol	Aurora-2	Time	time	Time	NA	NA	NA	NA
+Q2LabSol	Aurora-2	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+Q2LabSol	Aurora-2	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+Q2LabSol	Aurora-2	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+Q2LabSol	Aurora-2	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+Q2LabSol	Aurora-2	V3-A	v450	V450/PB 	405	458	15	violet
+Q2LabSol	Aurora-2	V7-A	v500	V500-C/Aqua	405	542	17	violet
+Q2LabSol	Aurora-2	B2-A	fitc	FITC	488	525	17	blue
+Q2LabSol	Aurora-2	YG1-A	pe	PE	561	577	20	yellow
+Q2LabSol	Aurora-2	YG9-A	pc7	PE-Cy7	561	780	30	yellow
+Q2LabSol	Aurora-2	B9-A	pc55	PerCP-Cy5.5	488	697	19	blue
+Q2LabSol	Aurora-2	R1-A	apc	APC	640	661	17	red
+Q2LabSol	Aurora-2	R7-A	ac7	APC-Cy7	640	783	23	red
+SSBS	CytoflexS	Time	time	Time	NA	NA	NA	NA
+SSBS	CytoflexS	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+SSBS	CytoflexS	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+SSBS	CytoflexS	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+SSBS	CytoflexS	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+SSBS	CytoflexS	FL5-A	v450	V450/PB 	405	450	45	violet
+SSBS	CytoflexS	FL6-A	v500	V500-C/Aqua	405	525	40	violet
+SSBS	CytoflexS	FL1-A	fitc	FITC	488	525	40	blue
+SSBS	CytoflexS	FL7-A	pe	PE	488	585	42	blue
+SSBS	CytoflexS	FL9-A	pc7	PE-Cy7	488	780	60	blue
+SSBS	CytoflexS	FL2-A	pc55	PerCP-Cy5.5	488	690	50	blue
+SSBS	CytoflexS	FL3-A	apc	APC	638	660	20	red
+SSBS	CytoflexS	FL4-A	ac7	APC-Cy7	638	780	60	red
+SSBS	NorthernL	Time	time	Time	NA	NA	NA	NA
+SSBS	NorthernL	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+SSBS	NorthernL	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+SSBS	NorthernL	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+SSBS	NorthernL	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+SSBS	NorthernL	V2-A	v450	V450/PB 	405	450	45	violet
+SSBS	NorthernL	V6-A	v500	V500-C/Aqua	405	525	40	violet
+SSBS	NorthernL	B2-A	fitc	FITC	488	525	40	blue
+SSBS	NorthernL	B4-A	pe	PE	488	585	42	blue
+SSBS	NorthernL	B13-A	pc7	PE-Cy7	488	780	60	blue
+SSBS	NorthernL	B9-A	pc55	PerCP-Cy5.5	488	690	50	blue
+SSBS	NorthernL	R2-A	apc	APC	640	660	20	red
+SSBS	NorthernL	R7-A	ac7	APC-Cy7	640	780	60	red
+UDel	FusionI	Time	time	Time	NA	NA	NA	NA
+UDel	FusionI	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+UDel	FusionI	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+UDel	FusionI	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+UDel	FusionI	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+UDel	FusionI	DAPI-A	v450	V450/PB 	405	450	50	violet
+UDel	FusionI	AmCyan-A	v500	V500-C/Aqua	405	525	50	violet
+UDel	FusionI	FITC-A	fitc	FITC	488	530	30	blue
+UDel	FusionI	PE-A	pe	PE	561	582	15	yellow
+UDel	FusionI	PE-Cy7-A	pc7	PE-Cy7	561	780	60	yellow
+UDel	FusionI	PerCP-Cy5-5-A	pc55	PerCP-Cy5.5	488	695	40	blue
+UDel	FusionI	APC-A	apc	APC	640	670	30	red
+UDel	FusionI	APC-Cy7-A	ac7	APC-Cy7	640	780	60	red
+UDel	FusionII	Time	time	Time	NA	NA	NA	NA
+UDel	FusionII	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+UDel	FusionII	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+UDel	FusionII	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+UDel	FusionII	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+UDel	FusionII	DAPI-A	v450	V450/PB 	405	450	50	violet
+UDel	FusionII	AmCyan-A	v500	V500-C/Aqua	405	525	50	violet
+UDel	FusionII	FITC-A	fitc	FITC	488	530	30	blue
+UDel	FusionII	PE-A	pe	PE	561	582	15	yellow
+UDel	FusionII	PE-Cy7-A	pc7	PE-Cy7	561	780	60	yellow
+UDel	FusionII	PerCP-Cy5-5-A	pc55	PerCP-Cy5.5	488	695	40	blue
+UDel	FusionII	APC-A	apc	APC	640	670	30	red
+UDel	FusionII	APC-Cy7-A	ac7	APC-Cy7	640	780	60	red
+WRAIR	Fortessa	Time	time	Time	NA	NA	NA	NA
+WRAIR	Fortessa	FSC-A	fsc_a	FSC-A	NA	NA	NA	NA
+WRAIR	Fortessa	FSC-H	fsc_h	FSC-H	NA	NA	NA	NA
+WRAIR	Fortessa	SSC-A	ssc_a	SSC-A	NA	NA	NA	NA
+WRAIR	Fortessa	SSC-H	ssc_h	SSC-H	NA	NA	NA	NA
+WRAIR	Fortessa	V-F 450/50-A	v450	V450/PB 	405	450	50	violet
+WRAIR	Fortessa	V-E 530/70-A	v500	V500-C/Aqua	405	530	70	violet
+WRAIR	Fortessa	B-B 525/50-A	fitc	FITC	488	525	50	blue
+WRAIR	Fortessa	G-E 575/26-A	pe	PE	561	575	26	yellow
+WRAIR	Fortessa	G-A 780/60-A	pc7	PE-Cy7	561	780	60	yellow
+WRAIR	Fortessa	B-A 710/40-A	pc55	PerCP-Cy5.5	488	710	40	blue
+WRAIR	Fortessa	R-C 670/14-A	apc	APC	628	670	14	red
+WRAIR	Fortessa	R-A 780/60-A	ac7	APC-Cy7	628	780	60	red
