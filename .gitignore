@@ -8,3 +8,4 @@ results
 *.gz
 *.pdf
 *.pyc
+*.fcs
