@@ -35,6 +35,9 @@ def make_gates(path: Path, gs: GateRanges) -> Any:
     _, df = fp.parse(path, channel_naming="$PnN")
     smp = fk.Sample(df, sample_id=str(path))
 
+    fsc_max = df["fsc_a"].max()
+    ssc_max = df["ssc_a"].max()
+
     dim_fsc = fk.Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
     dim_ssc = fk.Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
 
@@ -54,12 +57,15 @@ def make_gates(path: Path, gs: GateRanges) -> Any:
         "ssc_a",
         source="raw",
         highlight_mask=mask,
+        x_max=min(gs.fsc_max * 5, fsc_max),
+        y_max=min(gs.ssc_max * 5, ssc_max),
     )
     p1 = smp.plot_scatter(
         "ac7",
         "fsc_a",
         source="raw",
         highlight_mask=mask,
+        y_max=min(gs.fsc_max * 5, fsc_max),
     )
     return row(p0, p1)
 

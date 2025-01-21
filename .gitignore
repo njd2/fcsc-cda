@@ -9,3 +9,6 @@ results
 *.pdf
 *.pyc
 *.fcs
+
+!static/
+!static/*
