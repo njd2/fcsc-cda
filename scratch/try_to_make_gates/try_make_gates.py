@@ -31,13 +31,7 @@ class GateRanges(NamedTuple):
     ssc_max: int
 
 
-def make_gates(path: Path, gs: GateRanges) -> Any:
-    _, df = fp.parse(path, channel_naming="$PnN")
-    smp = fk.Sample(df, sample_id=str(path))
-
-    fsc_max = df["fsc_a"].max()
-    ssc_max = df["ssc_a"].max()
-
+def build_gating_strategy(gs: GateRanges) -> Any:
     dim_fsc = fk.Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
     dim_ssc = fk.Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
 
@@ -48,6 +42,17 @@ def make_gates(path: Path, gs: GateRanges) -> Any:
 
     g_strat = fk.GatingStrategy()
     g_strat.add_gate(rect_top_left_gate, gate_path=("root",))
+
+    return g_strat
+
+
+def make_gates(path: Path, gs: GateRanges) -> Any:
+    g_strat = build_gating_strategy(gs)
+    _, df = fp.parse(path, channel_naming="$PnN")
+    smp = fk.Sample(df, sample_id=str(path))
+
+    fsc_max = df["fsc_a"].max()
+    ssc_max = df["ssc_a"].max()
 
     res = g_strat.gate_sample(smp)
     mask = res.get_gate_membership("beads")
@@ -147,4 +152,18 @@ def make_plots(om: str) -> None:
     show(page)
 
 
+def write_gate(om: str, non_rainbow_out: Path, rainbow_out: Path) -> None:
+    all_gs = read_gate_ranges(Path("static/sop1_gates.tsv"))
+    non_rainbow = build_gating_strategy(all_gs[(om, False)])
+    rainbow = build_gating_strategy(all_gs[(om, True)])
+    fk.export_gatingml(non_rainbow, non_rainbow_out)
+    fk.export_gatingml(rainbow, rainbow_out)
+
+
 make_plots("WRAIR_Fortessa")
+
+write_gate(
+    "WRAIR_Fortessa",
+    Path("/tmp/non_rainbow.xml"),
+    Path("/tmp/rainbow.xml"),
+)
