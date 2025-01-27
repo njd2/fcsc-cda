@@ -105,7 +105,7 @@ def apply_gates_to_sample(fcs_path: Path, gs: GateRanges, colors: list[str]) -> 
             trans[c] = fk.transforms.LogicleTransform(color_max, 1.0, LogicleM, 0)
         else:
             low_ref = np.quantile(arr_neg, 0.05)
-            best_W = (LogicleM - math.log(color_max / abs(low_ref))) / 2
+            best_W = (LogicleM - math.log10(color_max / abs(low_ref))) / 2
             trans[c] = fk.transforms.LogicleTransform(color_max, best_W, LogicleM, 0)
     smp_beads.apply_transform(trans)
     ps = [
