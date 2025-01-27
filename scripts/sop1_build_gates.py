@@ -11,11 +11,17 @@ import fcsparser as fp  # type: ignore
 from typing import Any, NamedTuple, IO, NewType
 import pandas as pd
 import numpy as np
+import numpy.typing as npt
+from scipy.stats import gaussian_kde  # type: ignore
 from bokeh.plotting import show, output_file
 from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
 
+PeakCoord = tuple[float, float]
+PeakCoords = list[PeakCoord]
+
 OM = NewType("OM", str)
+Color = NewType("Color", str)
 
 RAINBOW_PAT = "RCP-30"
 
@@ -25,7 +31,7 @@ NO_SCATTER = [
     OM("LMNXSEA_ImageStreamX-1"),
 ]
 
-COLORS = ["v450", "v500", "fitc", "pc55", "pe", "pc7", "apc", "ac7"]
+COLORS = [*map(Color, ["v450", "v500", "fitc", "pc55", "pe", "pc7", "apc", "ac7"])]
 
 FILE_ORDER = [
     f"FC-{x}_SOP"
@@ -41,6 +47,8 @@ FILE_ORDER = [
     ]
 ]
 
+COLOR_MAP = dict(zip(FILE_ORDER, COLORS))
+
 LogicleM = 4.5
 
 
@@ -49,6 +57,10 @@ class GateRanges(NamedTuple):
     fsc_max: int
     ssc_min: int
     ssc_max: int
+
+
+def path_to_color(p: Path) -> Color | None:
+    return next((v for k, v in COLOR_MAP.items() if k in p.name), None)
 
 
 def build_gating_strategy(gs: GateRanges) -> Any:
@@ -66,7 +78,78 @@ def build_gating_strategy(gs: GateRanges) -> Any:
     return g_strat
 
 
-def apply_gates_to_sample(fcs_path: Path, gs: GateRanges, colors: list[str]) -> Any:
+def find_differential_peaks(
+    positions: npt.NDArray[np.float32],
+    pdf: npt.NDArray[np.float32],
+    dd_pdf: npt.NDArray[np.float32],
+    signal: int,
+) -> PeakCoords:
+    mask = np.zeros((positions.size), dtype=bool)
+    mask[1:-1] = dd_pdf == signal
+    x = positions[mask].tolist()
+    y = pdf[mask].tolist()
+    coords = list(zip(x, y))
+    coords.sort(key=lambda x: -x[1])
+    return coords
+
+
+def find_density_peaks(
+    x: npt.NDArray[np.float32],
+    n: int = 512,
+    bw_method: str | float = "scott",
+) -> tuple[PeakCoords, PeakCoords]:
+    """Find density peaks in vector x using "double diff" method.
+
+    Density is computed with n evenly spaced intervals over x using a gaussian
+    kernel.
+
+    Specifically, find the places where the 1st derivative goes immediately from
+    positive to negative (peaks) or the reverse (valleys).
+
+    Return list of peaks and valley positions.
+    """
+
+    if x.size < 3:
+        raise ValueError("need at least two points to compute peaks/valleys")
+    positions = np.linspace(x.min(), x.max(), n)
+    kernel = gaussian_kde(x, bw_method=bw_method)
+    pdf = kernel(positions)
+    # TODO this will fail if the peak consists of more than one point (ie
+    # multiple consecutive points are tied for the local maximum); in practice
+    # these will be rare, but don't say I didn't warn you when this turns out
+    # not to be forever ;)
+    dd_pdf = np.diff(np.sign(np.diff(pdf)))
+    peaks = find_differential_peaks(positions, pdf, dd_pdf, -2)
+    valleys = find_differential_peaks(positions, pdf, dd_pdf, 2)
+    return (peaks, valleys)
+
+
+def make_min_density_serial_gates(
+    x: npt.NDArray[np.float32],
+    k: int,
+    bw: float,
+) -> list[float]:
+    """Gate vector x by minimum density between at most k peaks."""
+    peaks, valleys = find_density_peaks(x, bw_method=bw)
+    if len(peaks) < 2:
+        raise ValueError(f"could not make serial gates, got {len(peaks)} peaks")
+    top_peaks = sorted(peaks[: min(k, len(peaks))], key=lambda p: p[0])
+    peak_intervals = [(p0[0], p1[0]) for p0, p1 in zip(top_peaks[:-1], top_peaks[1:])]
+    contained_valleys = [
+        [v for v in valleys if x0 < v[0] < x1] for x0, x1 in peak_intervals
+    ]
+    if any([len(v) == 0 for v in contained_valleys]):
+        raise ValueError("not all peak intervals contain a valley")
+    min_valleys = [v[-1][0] for v in contained_valleys]
+    return min_valleys
+
+
+def apply_gates_to_sample(
+    fcs_path: Path,
+    gs: GateRanges,
+    colors: list[Color],
+    bead_color: Color | None,
+) -> Any:
     g_strat = build_gating_strategy(gs)
     _, df = fp.parse(fcs_path, channel_naming="$PnN")
     smp = fk.Sample(df, sample_id=str(fcs_path.name))
@@ -108,9 +191,18 @@ def apply_gates_to_sample(fcs_path: Path, gs: GateRanges, colors: list[str]) -> 
             best_W = (LogicleM - math.log10(color_max / abs(low_ref))) / 2
             trans[c] = fk.transforms.LogicleTransform(color_max, best_W, LogicleM, 0)
     smp_beads.apply_transform(trans)
-    ps = [
-        smp_beads.plot_histogram(c, source="xform", x_range=(-0.2, 1)) for c in colors
-    ]
+    df_beads_x = smp_beads.as_dataframe(source="xform")
+    ps = []
+    for c in colors:
+        p = smp_beads.plot_histogram(c, source="xform", x_range=(-0.2, 1))
+        if bead_color is not None and c == bead_color:
+            gate = make_min_density_serial_gates(df_beads_x[c].values, 2, 0.2)
+            p.vspan(x=[gate], color="red")
+        elif bead_color is None:
+            gates = make_min_density_serial_gates(df_beads_x[c].values, 8, 0.05)
+            for g in gates:
+                p.vspan(x=[g], color="red")
+        ps.append(p)
     return row(p0, *ps)
 
 
@@ -164,7 +256,7 @@ def make_plots(
     files_path: Path,
     om: OM,
     rainbow: bool,
-    colors: list[str],
+    colors: list[Color],
 ) -> None:
     all_gs = read_gate_ranges(ranges_path)
     path_map = read_path_map(files_path)
@@ -173,7 +265,12 @@ def make_plots(
     non_rainbow_tab = TabPanel(
         child=column(
             *[
-                apply_gates_to_sample(p, all_gs[(om, False)], colors)
+                apply_gates_to_sample(
+                    p,
+                    all_gs[(om, False)],
+                    colors,
+                    path_to_color(p),
+                )
                 for p in paths
                 if RAINBOW_PAT not in p.name
             ]
@@ -182,7 +279,7 @@ def make_plots(
     )
     rainbow_plot = next(
         (
-            apply_gates_to_sample(p, all_gs[(om, True)], colors)
+            apply_gates_to_sample(p, all_gs[(om, True)], colors, None)
             for p in paths
             if RAINBOW_PAT in p.name
         ),
