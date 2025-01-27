@@ -2,23 +2,23 @@
 
 import argparse
 import sys
-from common.io import read_fcs_metadata, TabularTEXT30, ParsedMetadata
+from common.io import read_fcs, TabularTEXT30, ParsedEvents
 
 
-def print_version(fcs: ParsedMetadata) -> dict[str, str]:
+def print_version(fcs: ParsedEvents) -> dict[str, str]:
     version = 3.0 if isinstance(fcs.meta.standard, TabularTEXT30) else 3.1
     return {"FCS version": str(version)}
 
 
-def print_header(fcs: ParsedMetadata) -> dict[str, str]:
+def print_header(fcs: ParsedEvents) -> dict[str, str]:
     return {k: str(v) for k, v in fcs.header._asdict().items()}
 
 
-def print_params(fcs: ParsedMetadata) -> dict[str, str]:
+def print_params(fcs: ParsedEvents) -> dict[str, str]:
     return {f"$P{p.index_}{p.ptype.value}": str(p.value) for p in fcs.meta.params}
 
 
-def print_standard(fcs: ParsedMetadata, remove_none: bool) -> dict[str, str]:
+def print_standard(fcs: ParsedEvents, remove_none: bool) -> dict[str, str]:
     return {
         k: str(v)
         for k, v in fcs.meta.standard.dict().items()
@@ -26,12 +26,16 @@ def print_standard(fcs: ParsedMetadata, remove_none: bool) -> dict[str, str]:
     }
 
 
-def print_nonstandard(fcs: ParsedMetadata) -> dict[str, str]:
+def print_nonstandard(fcs: ParsedEvents) -> dict[str, str]:
     return {k: v for k, v in fcs.meta.nonstandard.items()}
 
 
-def print_deviant(fcs: ParsedMetadata) -> dict[str, str]:
+def print_deviant(fcs: ParsedEvents) -> dict[str, str]:
     return {str(k): v for k, v in fcs.meta.deviant.items()}
+
+
+def print_events(fcs: ParsedEvents) -> None:
+    print(fcs.events.describe())
 
 
 def main() -> None:
@@ -61,9 +65,15 @@ def main() -> None:
     parser.add_argument(
         "-r", "--remove", help="remove None values", action="store_true"
     )
+    parser.add_argument(
+        "-e",
+        "--events",
+        help="print event statistics",
+        action="store_true",
+    )
     parsed = parser.parse_args(sys.argv[1:])
 
-    fcs = read_fcs_metadata(parsed.path)
+    fcs = read_fcs(parsed.path)
 
     acc: dict[str, str] = {}
 
@@ -87,6 +97,9 @@ def main() -> None:
 
     for k, v in acc.items():
         print(f"{k}: {v}")
+
+    if parsed.events:
+        print_events(fcs)
 
 
 main()
