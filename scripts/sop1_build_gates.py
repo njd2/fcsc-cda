@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+import math
 from tempfile import NamedTemporaryFile
 import argparse
 import sys
@@ -9,6 +10,7 @@ import flowkit as fk  # type: ignore
 import fcsparser as fp  # type: ignore
 from typing import Any, NamedTuple, IO, NewType
 import pandas as pd
+import numpy as np
 from bokeh.plotting import show, output_file
 from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
@@ -23,7 +25,23 @@ NO_SCATTER = [
     OM("LMNXSEA_ImageStreamX-1"),
 ]
 
-COLORS = ["v450", "v500", "fitc", "pe", "pc55", "pc7", "apc", "ac7"]
+COLORS = ["v450", "v500", "fitc", "pc55", "pe", "pc7", "apc", "ac7"]
+
+FILE_ORDER = [
+    f"FC-{x}_SOP"
+    for x in [
+        "V450",
+        "V500-C",
+        "FITC",
+        "PerCP-Cy5.5",
+        "PE",
+        "PE-Cy7",
+        "APC",
+        "APC-Cy7",
+    ]
+]
+
+LogicleM = 4.5
 
 
 class GateRanges(NamedTuple):
@@ -68,10 +86,27 @@ def apply_gates_to_sample(fcs_path: Path, gs: GateRanges, colors: list[str]) -> 
         y_max=min(gs.ssc_max * 5, ssc_max),
     )
 
+    # p1 = smp.plot_scatter(
+    #     "fsc_h",
+    #     "ssc_h",
+    #     source="raw",
+    #     highlight_mask=mask,
+    # )
+
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
     smp_beads = fk.Sample(df_beads, sample_id=str(fcs_path.name))
     color_max = max([df_beads[c].max() for c in COLORS])
-    trans = {c: fk.transforms.AsinhTransform(color_max, 4, 1) for c in colors}
+    trans = {}
+    # see Parks et al (the Logicle Paper) for formulas/rationale for doing this
+    for c in COLORS:
+        arr = df_beads[c].values
+        arr_neg = arr[arr < 0]
+        if arr_neg.size < 10:
+            trans[c] = fk.transforms.LogicleTransform(color_max, 1.0, LogicleM, 0)
+        else:
+            low_ref = np.quantile(arr_neg, 0.05)
+            best_W = (LogicleM - math.log(color_max / abs(low_ref))) / 2
+            trans[c] = fk.transforms.LogicleTransform(color_max, best_W, LogicleM, 0)
     smp_beads.apply_transform(trans)
     ps = [
         smp_beads.plot_histogram(c, source="xform", x_range=(-0.2, 1)) for c in colors
@@ -91,6 +126,10 @@ def read_path_map(files_path: Path) -> dict[OM, list[Path]]:
             if om not in acc:
                 acc[om] = []
             acc[om] += [p]
+    for k in acc:
+        acc[k].sort(
+            key=lambda x: next((i for i, o in enumerate(FILE_ORDER) if o in x.name), -1)
+        )
     return acc
 
 
