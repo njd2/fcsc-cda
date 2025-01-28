@@ -59,6 +59,18 @@ class GateRanges(NamedTuple):
     ssc_max: int
 
 
+class AutoGateConfig(NamedTuple):
+    min_peak: float
+    max_valley: float
+    bw: float | str
+
+
+class SampleConfig(NamedTuple):
+    colors: list[Color]
+    non_rainbow: AutoGateConfig
+    rainbow: AutoGateConfig
+
+
 def path_to_color(p: Path) -> Color | None:
     return next((v for k, v in COLOR_MAP.items() if k in p.name), None)
 
@@ -95,8 +107,8 @@ def find_differential_peaks(
 
 def find_density_peaks(
     x: npt.NDArray[np.float32],
+    bw_method: str | float,
     n: int = 512,
-    bw_method: str | float = "scott",
 ) -> tuple[PeakCoords, PeakCoords]:
     """Find density peaks in vector x using "double diff" method.
 
@@ -125,29 +137,40 @@ def find_density_peaks(
 
 
 def make_min_density_serial_gates(
+    ac: AutoGateConfig,
     x: npt.NDArray[np.float32],
     k: int,
-    bw: float,
 ) -> list[float]:
-    """Gate vector x by minimum density between at most k peaks."""
-    peaks, valleys = find_density_peaks(x, bw_method=bw)
+    """Gate vector x by minimum density between at most k peaks.
+
+    bw is the bandwidth method or size to be passed to the Gaussian density
+    estimation function.
+
+    min_peak is the minimum size of each peak (in terms of probability).
+    max_valley is analogous to the maximum size of each valley.
+    """
+    peaks, valleys = find_density_peaks(x, bw_method=ac.bw)
     if len(peaks) < 2:
         raise ValueError(f"could not make serial gates, got {len(peaks)} peaks")
-    top_peaks = sorted(peaks[: min(k, len(peaks))], key=lambda p: p[0])
-    peak_intervals = [(p0[0], p1[0]) for p0, p1 in zip(top_peaks[:-1], top_peaks[1:])]
+    n_peaks = min(k, len(peaks))
+    top_peaks = [
+        p[0] for p in sorted(peaks[:n_peaks], key=lambda p: p[0]) if ac.min_peak < p[1]
+    ]
+    peak_intervals = [*zip(top_peaks[:-1], top_peaks[1:])]
+    low_valleys = [v[0] for v in valleys if v[1] < ac.max_valley]
     contained_valleys = [
-        [v for v in valleys if x0 < v[0] < x1] for x0, x1 in peak_intervals
+        [x for x in low_valleys if x0 < x < x1] for x0, x1 in peak_intervals
     ]
     if any([len(v) == 0 for v in contained_valleys]):
         raise ValueError("not all peak intervals contain a valley")
-    min_valleys = [v[-1][0] for v in contained_valleys]
+    min_valleys = [v[-1] for v in contained_valleys]
     return min_valleys
 
 
 def apply_gates_to_sample(
-    fcs_path: Path,
+    sc: SampleConfig,
     gs: GateRanges,
-    colors: list[Color],
+    fcs_path: Path,
     bead_color: Color | None,
 ) -> Any:
     g_strat = build_gating_strategy(gs)
@@ -169,13 +192,6 @@ def apply_gates_to_sample(
         y_max=min(gs.ssc_max * 5, ssc_max),
     )
 
-    # p1 = smp.plot_scatter(
-    #     "fsc_h",
-    #     "ssc_h",
-    #     source="raw",
-    #     highlight_mask=mask,
-    # )
-
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
     smp_beads = fk.Sample(df_beads, sample_id=str(fcs_path.name))
     color_max = max([df_beads[c].max() for c in COLORS])
@@ -193,13 +209,25 @@ def apply_gates_to_sample(
     smp_beads.apply_transform(trans)
     df_beads_x = smp_beads.as_dataframe(source="xform")
     ps = []
-    for c in colors:
+    for c in sc.colors:
         p = smp_beads.plot_histogram(c, source="xform", x_range=(-0.2, 1))
+        # non rainbow beads should have two defined peaks in the channel for
+        # that measures their color
         if bead_color is not None and c == bead_color:
-            gate = make_min_density_serial_gates(df_beads_x[c].values, 2, 0.2)
+            gate = make_min_density_serial_gates(
+                sc.non_rainbow,
+                df_beads_x[c].values,
+                2,
+            )
             p.vspan(x=[gate], color="red")
+        # rainbow beads are defined in all channels and there should be 8 peaks
+        # at most
         elif bead_color is None:
-            gates = make_min_density_serial_gates(df_beads_x[c].values, 8, 0.05)
+            gates = make_min_density_serial_gates(
+                sc.rainbow,
+                df_beads_x[c].values,
+                8,
+            )
             for g in gates:
                 p.vspan(x=[g], color="red")
         ps.append(p)
@@ -262,13 +290,27 @@ def make_plots(
     path_map = read_path_map(files_path)
     paths = path_map[om]
 
+    sc = SampleConfig(
+        colors=colors,
+        non_rainbow=AutoGateConfig(
+            bw=0.2,
+            min_peak=0.05,
+            max_valley=100,
+        ),
+        rainbow=AutoGateConfig(
+            bw=0.05,
+            min_peak=0.05,
+            max_valley=100,
+        ),
+    )
+
     non_rainbow_tab = TabPanel(
         child=column(
             *[
                 apply_gates_to_sample(
-                    p,
+                    sc,
                     all_gs[(om, False)],
-                    colors,
+                    p,
                     path_to_color(p),
                 )
                 for p in paths
@@ -279,7 +321,7 @@ def make_plots(
     )
     rainbow_plot = next(
         (
-            apply_gates_to_sample(p, all_gs[(om, True)], colors, None)
+            apply_gates_to_sample(sc, all_gs[(om, True)], p, None)
             for p in paths
             if RAINBOW_PAT in p.name
         ),
