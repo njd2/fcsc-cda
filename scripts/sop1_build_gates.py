@@ -85,7 +85,7 @@ def build_gating_strategy(gs: GateRanges) -> Any:
     )
 
     g_strat = fk.GatingStrategy()
-    g_strat.add_gate(rect_top_left_gate, gate_path=("root",))
+    g_strat.add_gate(rect_top_left_gate, ("root",))
 
     return g_strat
 
@@ -177,23 +177,10 @@ def apply_gates_to_sample(
     _, df = fp.parse(fcs_path, channel_naming="$PnN")
     smp = fk.Sample(df, sample_id=str(fcs_path.name))
 
-    fsc_max = df["fsc_a"].max()
-    ssc_max = df["ssc_a"].max()
-
     res = g_strat.gate_sample(smp)
     mask = res.get_gate_membership("beads")
 
-    p0 = smp.plot_scatter(
-        "fsc_a",
-        "ssc_a",
-        source="raw",
-        highlight_mask=mask,
-        x_max=min(gs.fsc_max * 5, fsc_max),
-        y_max=min(gs.ssc_max * 5, ssc_max),
-    )
-
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
-    smp_beads = fk.Sample(df_beads, sample_id=str(fcs_path.name))
     color_max = max([df_beads[c].max() for c in COLORS])
     trans = {}
     # see Parks et al (the Logicle Paper) for formulas/rationale for doing this
@@ -206,31 +193,76 @@ def apply_gates_to_sample(
             low_ref = np.quantile(arr_neg, 0.05)
             best_W = (LogicleM - math.log10(color_max / abs(low_ref))) / 2
             trans[c] = fk.transforms.LogicleTransform(color_max, best_W, LogicleM, 0)
+
+    for k, v in trans.items():
+        g_strat.add_transform(f"{k}_logicle", v)
+
+    smp_beads = fk.Sample(df_beads, sample_id=str(fcs_path.name))
     smp_beads.apply_transform(trans)
     df_beads_x = smp_beads.as_dataframe(source="xform")
     ps = []
     for c in sc.colors:
-        p = smp_beads.plot_histogram(c, source="xform", x_range=(-0.2, 1))
         # non rainbow beads should have two defined peaks in the channel for
         # that measures their color
+        boundaries = []
+        x = df_beads_x[c].values
         if bead_color is not None and c == bead_color:
-            gate = make_min_density_serial_gates(
-                sc.non_rainbow,
-                df_beads_x[c].values,
-                2,
-            )
-            p.vspan(x=[gate], color="red")
+            boundaries = make_min_density_serial_gates(sc.non_rainbow, x, 2)
         # rainbow beads are defined in all channels and there should be 8 peaks
         # at most
         elif bead_color is None:
-            gates = make_min_density_serial_gates(
-                sc.rainbow,
-                df_beads_x[c].values,
-                8,
-            )
-            for g in gates:
-                p.vspan(x=[g], color="red")
+            boundaries = make_min_density_serial_gates(sc.rainbow, x, 8)
+        gates = []
+        if len(boundaries) > 0:
+            lower: list[float] = [-0.2, *boundaries]
+            upper: list[float] = [*boundaries, 1.0]
+            gates = [
+                fk.gates.RectangleGate(
+                    f"{c}_{i}",
+                    [
+                        fk.Dimension(
+                            c,
+                            transformation_ref=f"{c}_logicle",
+                            range_min=x0,
+                            range_max=x1,
+                        )
+                    ],
+                )
+                for i, (x0, x1) in enumerate(zip(lower, upper))
+            ]
+        for g in gates:
+            g_strat.add_gate(g, ("root", "beads"))
+
+    color_gates: dict[Color, list[float]] = {}
+    for gname, gpath in g_strat.get_child_gate_ids("beads", ("root",)):
+        g = g_strat.get_gate(gname, gpath)
+        # ASSUME each gate is a rectangle gate with one dimension
+        color = g.get_dimension_ids()[0]
+        _color = Color(color)
+        dim = g.get_dimension(color)
+        if _color not in color_gates:
+            color_gates[_color] = []
+        color_gates[_color].append(dim.max)
+    color_gates = {k: sorted(v)[0:-1] for k, v in color_gates.items()}
+
+    for c in COLORS:
+        p = smp_beads.plot_histogram(c, source="xform", x_range=(-0.2, 1))
+        if c in color_gates:
+            p.vspan(x=color_gates[c], color="red")
         ps.append(p)
+
+    fsc_max = df["fsc_a"].max()
+    ssc_max = df["ssc_a"].max()
+
+    p0 = smp.plot_scatter(
+        "fsc_a",
+        "ssc_a",
+        source="raw",
+        highlight_mask=mask,
+        x_max=min(gs.fsc_max * 5, fsc_max),
+        y_max=min(gs.ssc_max * 5, ssc_max),
+    )
+
     return row(p0, *ps)
 
 
