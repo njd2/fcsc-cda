@@ -7,6 +7,8 @@ import sys
 import os
 from pathlib import Path
 import flowkit as fk  # type: ignore
+from flowkit import Dimension, Sample
+from flowkit._models.gates import RectangleGate  # type: ignore
 import fcsparser as fp  # type: ignore
 from typing import Any, NamedTuple, IO, NewType
 import pandas as pd
@@ -76,8 +78,8 @@ def path_to_color(p: Path) -> Color | None:
 
 
 def build_gating_strategy(gs: GateRanges) -> Any:
-    dim_fsc = fk.Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
-    dim_ssc = fk.Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
+    dim_fsc = Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
+    dim_ssc = Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
 
     rect_top_left_gate = fk.gates.RectangleGate(
         "beads",
@@ -173,17 +175,34 @@ def apply_gates_to_sample(
     fcs_path: Path,
     bead_color: Color | None,
 ) -> Any:
+    g_strat = fk.GatingStrategy()
+
+    # Begin by adding the bead population scatter gates according to hardcoded
+    # sample ranges
+    dim_fsc = Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
+    dim_ssc = Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
+    bead_gate = RectangleGate("beads", dimensions=[dim_fsc, dim_ssc])
+
+    g_strat.add_gate(bead_gate, ("root",))
     g_strat = build_gating_strategy(gs)
+
+    # The color gates are automatically placed according to events, so read
+    # events, make a flowkit Sample, then gate out the beads
     _, df = fp.parse(fcs_path, channel_naming="$PnN")
-    smp = fk.Sample(df, sample_id=str(fcs_path.name))
+    smp = Sample(df, sample_id=str(fcs_path.name))
 
     res = g_strat.gate_sample(smp)
     mask = res.get_gate_membership("beads")
 
+    # Apply logicle transform to each color channel. In this case there should
+    # be relatively few events in the negative range, so A should be 0. Set M to
+    # be 4.5 (sane default). I don't feel like getting the original range data
+    # for each channel so just use the max of all of them (T = max). Then set W
+    # according to 5% negative heuristic (see Parks et al (the Logicle Paper)
+    # for formulas/rationale for doing this).
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
     color_max = max([df_beads[c].max() for c in COLORS])
     trans = {}
-    # see Parks et al (the Logicle Paper) for formulas/rationale for doing this
     for c in COLORS:
         arr = df_beads[c].values
         arr_neg = arr[arr < 0]
@@ -197,10 +216,15 @@ def apply_gates_to_sample(
     for k, v in trans.items():
         g_strat.add_transform(f"{k}_logicle", v)
 
-    smp_beads = fk.Sample(df_beads, sample_id=str(fcs_path.name))
-    smp_beads.apply_transform(trans)
-    df_beads_x = smp_beads.as_dataframe(source="xform")
-    ps = []
+    smp.apply_transform(trans)
+    df_beads_x = smp.as_dataframe(source="xform", event_mask=mask)
+
+    # Place gates on each color channel. This will be different depending on if
+    # these are rainbow beads or FC beads. The former should have 8 peaks in all
+    # channels, and the latter should have exactly two peaks in its own color
+    # channel. In all cases, place gate using peak/valley heuristic for finding
+    # "large spikes" in the bead population. Do this on transformed data since
+    # this is the only sane way to resolve the lower peaks.
     for c in sc.colors:
         # non rainbow beads should have two defined peaks in the channel for
         # that measures their color
@@ -233,6 +257,7 @@ def apply_gates_to_sample(
         for g in gates:
             g_strat.add_gate(g, ("root", "beads"))
 
+    # Plot stuff...
     color_gates: dict[Color, list[float]] = {}
     for gname, gpath in g_strat.get_child_gate_ids("beads", ("root",)):
         g = g_strat.get_gate(gname, gpath)
@@ -245,8 +270,10 @@ def apply_gates_to_sample(
         color_gates[_color].append(dim.max)
     color_gates = {k: sorted(v)[0:-1] for k, v in color_gates.items()}
 
+    smp_colors = fk.Sample(df_beads_x, sample_id=str(fcs_path.name))
+    ps = []
     for c in COLORS:
-        p = smp_beads.plot_histogram(c, source="xform", x_range=(-0.2, 1))
+        p = smp_colors.plot_histogram(c, source="raw", x_range=(-0.2, 1))
         if c in color_gates:
             p.vspan(x=color_gates[c], color="red")
         ps.append(p)
