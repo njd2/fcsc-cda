@@ -1,23 +1,27 @@
 #! /usr/bin/env python3
 
 import math
-from tempfile import NamedTemporaryFile
 import argparse
 import sys
 import os
-from pathlib import Path
-import flowkit as fk  # type: ignore
-from flowkit import Dimension, Sample
-from flowkit._models.gates import RectangleGate  # type: ignore
-import fcsparser as fp  # type: ignore
-from typing import Any, NamedTuple, IO, NewType
 import pandas as pd
 import numpy as np
 import numpy.typing as npt
+from tempfile import NamedTemporaryFile
+from pathlib import Path
+import flowkit as fk  # type: ignore
+from flowkit import Dimension, Sample, GatingStrategy
+from flowkit._models.gates import RectangleGate  # type: ignore
+from flowkit._models.transforms import LogicleTransform  # type: ignore
+import fcsparser as fp  # type: ignore
+from typing import Any, NamedTuple, NewType, Callable, TypeVar
 from scipy.stats import gaussian_kde  # type: ignore
 from bokeh.plotting import show, output_file
 from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
+
+X = TypeVar("X")
+Y = TypeVar("Y")
 
 PeakCoord = tuple[float, float]
 PeakCoords = list[PeakCoord]
@@ -51,6 +55,7 @@ FILE_ORDER = [
 
 COLOR_MAP = dict(zip(FILE_ORDER, COLORS))
 
+
 LogicleM = 4.5
 
 
@@ -61,6 +66,10 @@ class GateRanges(NamedTuple):
     ssc_max: int
 
 
+# None Color = rainbow
+GateRangeMap = dict[OM, dict[Color | None, GateRanges]]
+
+
 class AutoGateConfig(NamedTuple):
     min_peak: float
     max_valley: float
@@ -68,28 +77,59 @@ class AutoGateConfig(NamedTuple):
 
 
 class SampleConfig(NamedTuple):
-    colors: list[Color]
     non_rainbow: AutoGateConfig
     rainbow: AutoGateConfig
+
+
+def fmap_maybe(f: Callable[[X], Y], x: X | None) -> Y | None:
+    return None if x is None else f(x)
+
+
+def from_maybe(d: X, x: X | None) -> X | None:
+    return d if x is None else x
+
+
+# TODO these are likely going to be flags, hardcoded for now to make things easy
+DEF_SC = SampleConfig(
+    non_rainbow=AutoGateConfig(
+        bw=0.2,
+        min_peak=0.05,
+        max_valley=100,
+    ),
+    rainbow=AutoGateConfig(
+        bw=0.05,
+        min_peak=0.05,
+        max_valley=100,
+    ),
+)
 
 
 def path_to_color(p: Path) -> Color | None:
     return next((v for k, v in COLOR_MAP.items() if k in p.name), None)
 
 
-def build_gating_strategy(gs: GateRanges) -> Any:
-    dim_fsc = Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
-    dim_ssc = Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
+# def path_to_om(p: Path) -> OM:
+#     xs = p.name.split("_")
+#     return OM(f"{xs[2]}_{xs[3]}")
 
-    rect_top_left_gate = fk.gates.RectangleGate(
-        "beads",
-        dimensions=[dim_fsc, dim_ssc],
-    )
 
-    g_strat = fk.GatingStrategy()
-    g_strat.add_gate(rect_top_left_gate, ("root",))
+def path_is_rainbow(p: Path) -> bool:
+    return path_to_color(p) is None
 
-    return g_strat
+
+# def build_gating_strategy(gs: GateRanges) -> Any:
+#     dim_fsc = Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
+#     dim_ssc = Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
+
+#     rect_top_left_gate = fk.gates.RectangleGate(
+#         "beads",
+#         dimensions=[dim_fsc, dim_ssc],
+#     )
+
+#     g_strat = fk.GatingStrategy()
+#     g_strat.add_gate(rect_top_left_gate, ("root",))
+
+#     return g_strat
 
 
 def find_differential_peaks(
@@ -169,22 +209,23 @@ def make_min_density_serial_gates(
     return min_valleys
 
 
-def apply_gates_to_sample(
+def build_gating_strategy(
     sc: SampleConfig,
     gs: GateRanges,
     fcs_path: Path,
-    bead_color: Color | None,
-) -> Any:
-    g_strat = fk.GatingStrategy()
+    scatteronly: bool,
+) -> tuple[GatingStrategy, Sample, npt.NDArray[np.bool_]]:
+    bead_color = path_to_color(fcs_path)
+    g_strat = GatingStrategy()
 
     # Begin by adding the bead population scatter gates according to hardcoded
     # sample ranges
+
     dim_fsc = Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
     dim_ssc = Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
     bead_gate = RectangleGate("beads", dimensions=[dim_fsc, dim_ssc])
 
     g_strat.add_gate(bead_gate, ("root",))
-    g_strat = build_gating_strategy(gs)
 
     # The color gates are automatically placed according to events, so read
     # events, make a flowkit Sample, then gate out the beads
@@ -193,6 +234,9 @@ def apply_gates_to_sample(
 
     res = g_strat.gate_sample(smp)
     mask = res.get_gate_membership("beads")
+
+    if scatteronly:
+        return g_strat, smp, mask
 
     # Apply logicle transform to each color channel. In this case there should
     # be relatively few events in the negative range, so A should be 0. Set M to
@@ -207,11 +251,11 @@ def apply_gates_to_sample(
         arr = df_beads[c].values
         arr_neg = arr[arr < 0]
         if arr_neg.size < 10:
-            trans[c] = fk.transforms.LogicleTransform(color_max, 1.0, LogicleM, 0)
+            trans[c] = LogicleTransform(color_max, 1.0, LogicleM, 0)
         else:
             low_ref = np.quantile(arr_neg, 0.05)
             best_W = (LogicleM - math.log10(color_max / abs(low_ref))) / 2
-            trans[c] = fk.transforms.LogicleTransform(color_max, best_W, LogicleM, 0)
+            trans[c] = LogicleTransform(color_max, best_W, LogicleM, 0)
 
     for k, v in trans.items():
         g_strat.add_transform(f"{k}_logicle", v)
@@ -225,7 +269,7 @@ def apply_gates_to_sample(
     # channel. In all cases, place gate using peak/valley heuristic for finding
     # "large spikes" in the bead population. Do this on transformed data since
     # this is the only sane way to resolve the lower peaks.
-    for c in sc.colors:
+    for c in COLORS:
         # non rainbow beads should have two defined peaks in the channel for
         # that measures their color
         boundaries = []
@@ -241,10 +285,10 @@ def apply_gates_to_sample(
             lower: list[float] = [-0.2, *boundaries]
             upper: list[float] = [*boundaries, 1.0]
             gates = [
-                fk.gates.RectangleGate(
+                RectangleGate(
                     f"{c}_{i}",
                     [
-                        fk.Dimension(
+                        Dimension(
                             c,
                             transformation_ref=f"{c}_logicle",
                             range_min=x0,
@@ -256,8 +300,34 @@ def apply_gates_to_sample(
             ]
         for g in gates:
             g_strat.add_gate(g, ("root", "beads"))
+    return g_strat, smp, mask
 
-    # Plot stuff...
+
+def apply_gates_to_sample(
+    sc: SampleConfig,
+    gs: GateRanges,
+    fcs_path: Path,
+    colors: list[Color],
+    scatteronly: bool,
+) -> Any:
+    g_strat, smp, bead_mask = build_gating_strategy(sc, gs, fcs_path, scatteronly)
+
+    df = smp.as_dataframe(source="raw")
+    fsc_max = df["fsc_a"].max()
+    ssc_max = df["ssc_a"].max()
+
+    p0 = smp.plot_scatter(
+        "fsc_a",
+        "ssc_a",
+        source="raw",
+        highlight_mask=bead_mask,
+        x_max=min(gs.fsc_max * 5, fsc_max),
+        y_max=min(gs.ssc_max * 5, ssc_max),
+    )
+
+    if scatteronly:
+        return row(p0)
+
     color_gates: dict[Color, list[float]] = {}
     for gname, gpath in g_strat.get_child_gate_ids("beads", ("root",)):
         g = g_strat.get_gate(gname, gpath)
@@ -270,25 +340,14 @@ def apply_gates_to_sample(
         color_gates[_color].append(dim.max)
     color_gates = {k: sorted(v)[0:-1] for k, v in color_gates.items()}
 
-    smp_colors = fk.Sample(df_beads_x, sample_id=str(fcs_path.name))
+    df_beads_x = smp.as_dataframe(source="xform", event_mask=bead_mask)
+    smp_colors = Sample(df_beads_x, sample_id=str(fcs_path.name))
     ps = []
-    for c in COLORS:
+    for c in colors:
         p = smp_colors.plot_histogram(c, source="raw", x_range=(-0.2, 1))
         if c in color_gates:
             p.vspan(x=color_gates[c], color="red")
         ps.append(p)
-
-    fsc_max = df["fsc_a"].max()
-    ssc_max = df["ssc_a"].max()
-
-    p0 = smp.plot_scatter(
-        "fsc_a",
-        "ssc_a",
-        source="raw",
-        highlight_mask=mask,
-        x_max=min(gs.fsc_max * 5, fsc_max),
-        y_max=min(gs.ssc_max * 5, ssc_max),
-    )
 
     return row(p0, *ps)
 
@@ -330,11 +389,47 @@ def read_path_map(files_path: Path) -> dict[OM, list[Path]]:
 #     df.to_csv(sys.stdout, index=False, sep="\t")
 
 
-def read_gate_ranges(ranges_path: Path) -> dict[tuple[OM, bool], GateRanges]:
-    df = pd.read_table(ranges_path)
+def df_to_colormap(om: str, df: pd.DataFrame) -> dict[Color | None, GateRanges]:
+    pairs = [
+        (c, GateRanges(int(f0), int(f1), int(s0), int(s1)))
+        for _, colors, f0, f1, s0, s1 in df.itertuples(index=False)
+        for c in colors.split(",")
+    ]
+
+    all_colors = [p for p in pairs if p[0] == "all"]
+    if len(all_colors) > 1:
+        raise ValueError(f"got more than one 'all' for {om}")
+    elif len(all_colors) == 1:
+        all_range = all_colors[0][1]
+    else:
+        all_range = None
+
+    rainbow_colors = [p for p in pairs if p[0] == "rainbow"]
+    if len(rainbow_colors) != 1:
+        raise ValueError(f"need exactly one rainbow color for {om}")
+    else:
+        rainbow_range = rainbow_colors[0][1]
+
+    specific_colors = dict([p for p in pairs if p[0] not in ["all", "rainbow"]])
+
+    if not all([p in COLORS for p in specific_colors]):
+        raise ValueError(f"invalid colors for {om}")
+    if all_range is None and len(specific_colors) != 8:
+        raise ValueError(f"not all colors specified for {om}")
+
+    if all_range is None:
+        color_pairs = specific_colors
+    else:
+        xs = dict([(c, all_range) for c in COLORS if c not in specific_colors])
+        color_pairs = {**xs, **specific_colors}
+
+    return {**color_pairs, None: rainbow_range}
+
+
+def read_gate_ranges(ranges_path: Path) -> GateRangeMap:
     return {
-        (om, is_rainbow): GateRanges(int(f0), int(f1), int(s0), int(s1))
-        for om, is_rainbow, f0, f1, s0, s1 in df.itertuples(index=False)
+        OM(om[0]): df_to_colormap(om[0], df)
+        for om, df in pd.read_table(ranges_path).groupby(["om"])
     }
 
 
@@ -344,33 +439,21 @@ def make_plots(
     om: OM,
     rainbow: bool,
     colors: list[Color],
+    scatteronly: bool,
 ) -> None:
     all_gs = read_gate_ranges(ranges_path)
     path_map = read_path_map(files_path)
     paths = path_map[om]
 
-    sc = SampleConfig(
-        colors=colors,
-        non_rainbow=AutoGateConfig(
-            bw=0.2,
-            min_peak=0.05,
-            max_valley=100,
-        ),
-        rainbow=AutoGateConfig(
-            bw=0.05,
-            min_peak=0.05,
-            max_valley=100,
-        ),
-    )
-
     non_rainbow_tab = TabPanel(
         child=column(
             *[
                 apply_gates_to_sample(
-                    sc,
-                    all_gs[(om, False)],
+                    DEF_SC,
+                    all_gs[om][path_to_color(p)],
                     p,
-                    path_to_color(p),
+                    colors,
+                    scatteronly,
                 )
                 for p in paths
                 if RAINBOW_PAT not in p.name
@@ -380,7 +463,13 @@ def make_plots(
     )
     rainbow_plot = next(
         (
-            apply_gates_to_sample(sc, all_gs[(om, True)], p, None)
+            apply_gates_to_sample(
+                DEF_SC,
+                all_gs[om][None],
+                p,
+                colors,
+                scatteronly,
+            )
             for p in paths
             if RAINBOW_PAT in p.name
         ),
@@ -403,34 +492,37 @@ def make_plots(
     show(page)
 
 
-def write_gate(
-    ranges_path: Path,
-    om: OM,
-    gate_handle: IO[bytes],
-    rainbow: bool,
-) -> None:
-    all_gs = read_gate_ranges(ranges_path)
-    gs = build_gating_strategy(all_gs[(om, rainbow)])
-    fk.export_gatingml(gs, gate_handle)
+def write_gate(om: OM, ranges: Path, fcs: Path, out: Path | None) -> None:
+    all_gs = read_gate_ranges(ranges)
+    color = path_to_color(fcs)
+    gs, _, _ = build_gating_strategy(DEF_SC, all_gs[om][color], fcs, False)
+    if out is not None:
+        with open(out, "wb") as f:
+            fk.export_gatingml(gs, f)
+    else:
+        # do some POSIX gymnastics to get stdout to accept a bytestream
+        with os.fdopen(sys.stdout.fileno(), "wb", closefd=False) as f:
+            fk.export_gatingml(gs, f)
 
 
 def write_all_gates(
-    files_path: Path,
-    ranges_path: Path,
-    out_dir: Path,
-    prefix: str,
+    files: Path,
+    ranges: Path,
+    out_dir: Path | None,
+    debug: bool,
 ) -> None:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path_map = read_path_map(files_path)
-    for om in path_map:
-
-        def go(rainbow: bool) -> None:
-            r = "rcp" if rainbow else "fc"
-            with open(out_dir / f"{prefix}_{str(om)}_{r}.xml", "wb") as ho:
-                write_gate(ranges_path, om, ho, rainbow)
-
-        go(True)
-        go(False)
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    path_map = read_path_map(files)
+    for om, fcs_paths in path_map.items():
+        if debug:
+            print(f"OM: {om}")
+        for p in fcs_paths:
+            if debug:
+                print(f"FCS file: {p.name}")
+            color = from_maybe("rainbow", path_to_color(p))
+            fn = f"{om}-{color}.xml"
+            write_gate(om, ranges, p, fmap_maybe(lambda p: p / fn, out_dir))
 
 
 def list_oms(files_path: Path) -> None:
@@ -461,25 +553,32 @@ def main() -> None:
         "--colors",
         help="comma separated list of colors to include",
     )
+    plot_parser.add_argument(
+        "-s",
+        "--scatteronly",
+        action="store_true",
+        help="only include scatter",
+    )
 
     write_gate_parser = subparsers.add_parser(
         "write_gate",
         help="write gate for org/machine ID",
     )
     write_gate_parser.add_argument("om", help="org/machine ID")
+    write_gate_parser.add_argument("files", help="path to list of files")
     write_gate_parser.add_argument("gates", help="path to list of gate ranges")
-    write_gate_parser.add_argument(
-        "-R",
-        "--rainbow",
-        action="store_true",
-        help="save rainbow gate",
-    )
+    write_gate_parser.add_argument("-o", "--out", help="output directory")
 
     write_gates_parser = subparsers.add_parser("write_gates", help="write all gates")
     write_gates_parser.add_argument("files", help="path to list of files")
     write_gates_parser.add_argument("gates", help="path to list of gate ranges")
-    write_gates_parser.add_argument("outdir", help="output directory")
-    write_gates_parser.add_argument("prefix", help="output file prefix ")
+    write_gates_parser.add_argument("-o", "--out", help="output directory")
+    write_gates_parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="print debug output",
+    )
 
     parsed = parser.parse_args(sys.argv[1:])
 
@@ -493,19 +592,23 @@ def main() -> None:
             OM(parsed.om),
             parsed.rainbow,
             COLORS if parsed.colors is None else parsed.colors.split(","),
+            parsed.scatteronly,
         )
 
     if parsed.cmd == "write_gate":
-        # do some POSIX gymnastics to get stdout to accept a bytestream
-        with os.fdopen(sys.stdout.fileno(), "wb", closefd=False) as f:
-            write_gate(Path(parsed.gates), OM(parsed.om), f, parsed.rainbow)
+        write_gate(
+            OM(parsed.om),
+            Path(parsed.files),
+            Path(parsed.gates),
+            fmap_maybe(Path, parsed.out),
+        )
 
     if parsed.cmd == "write_gates":
         write_all_gates(
             Path(parsed.files),
             Path(parsed.gates),
-            Path(parsed.outdir),
-            parsed.prefix,
+            fmap_maybe(Path, parsed.out),
+            parsed.debug,
         )
 
 
