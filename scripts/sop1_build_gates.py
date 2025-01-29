@@ -13,15 +13,13 @@ import flowkit as fk  # type: ignore
 from flowkit import Dimension, Sample, GatingStrategy
 from flowkit._models.gates import RectangleGate  # type: ignore
 from flowkit._models.transforms import LogicleTransform  # type: ignore
-import fcsparser as fp  # type: ignore
-from typing import Any, NamedTuple, NewType, Callable, TypeVar
+from typing import Any, NamedTuple, NewType
 from scipy.stats import gaussian_kde  # type: ignore
 from bokeh.plotting import show, output_file
 from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
-
-X = TypeVar("X")
-Y = TypeVar("Y")
+from common.io import read_fcs
+from common.functional import fmap_maybe, from_maybe
 
 PeakCoord = tuple[float, float]
 PeakCoords = list[PeakCoord]
@@ -81,14 +79,6 @@ class SampleConfig(NamedTuple):
     rainbow: AutoGateConfig
 
 
-def fmap_maybe(f: Callable[[X], Y], x: X | None) -> Y | None:
-    return None if x is None else f(x)
-
-
-def from_maybe(d: X, x: X | None) -> X | None:
-    return d if x is None else x
-
-
 # TODO these are likely going to be flags, hardcoded for now to make things easy
 DEF_SC = SampleConfig(
     non_rainbow=AutoGateConfig(
@@ -106,30 +96,6 @@ DEF_SC = SampleConfig(
 
 def path_to_color(p: Path) -> Color | None:
     return next((v for k, v in COLOR_MAP.items() if k in p.name), None)
-
-
-# def path_to_om(p: Path) -> OM:
-#     xs = p.name.split("_")
-#     return OM(f"{xs[2]}_{xs[3]}")
-
-
-def path_is_rainbow(p: Path) -> bool:
-    return path_to_color(p) is None
-
-
-# def build_gating_strategy(gs: GateRanges) -> Any:
-#     dim_fsc = Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
-#     dim_ssc = Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
-
-#     rect_top_left_gate = fk.gates.RectangleGate(
-#         "beads",
-#         dimensions=[dim_fsc, dim_ssc],
-#     )
-
-#     g_strat = fk.GatingStrategy()
-#     g_strat.add_gate(rect_top_left_gate, ("root",))
-
-#     return g_strat
 
 
 def find_differential_peaks(
@@ -229,8 +195,8 @@ def build_gating_strategy(
 
     # The color gates are automatically placed according to events, so read
     # events, make a flowkit Sample, then gate out the beads
-    _, df = fp.parse(fcs_path, channel_naming="$PnN")
-    smp = Sample(df, sample_id=str(fcs_path.name))
+    parsed = read_fcs(fcs_path)
+    smp = Sample(parsed.events, sample_id=str(fcs_path.name))
 
     res = g_strat.gate_sample(smp)
     mask = res.get_gate_membership("beads")
@@ -369,24 +335,6 @@ def read_path_map(files_path: Path) -> dict[OM, list[Path]]:
             key=lambda x: next((i for i, o in enumerate(FILE_ORDER) if o in x.name), -1)
         )
     return acc
-
-
-# def write_blank_gate_ranges(files_path: Path) -> None:
-#     path_map = read_path_map(files_path)
-#     no_rainbow = [(om, False, 0, 1e12, 0, 1e12) for om in path_map]
-#     rainbow = [(om, True, 0, 1e12, 0, 1e12) for om in path_map]
-#     df = pd.DataFrame(
-#         no_rainbow + rainbow,
-#         columns=[
-#             "om",
-#             "is_rainbow",
-#             "fsc_min",
-#             "fsc_max",
-#             "ssc_min",
-#             "ssc_max",
-#         ],
-#     )
-#     df.to_csv(sys.stdout, index=False, sep="\t")
 
 
 def df_to_colormap(om: str, df: pd.DataFrame) -> dict[Color | None, GateRanges]:
