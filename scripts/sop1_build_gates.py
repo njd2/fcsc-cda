@@ -9,20 +9,20 @@ import numpy as np
 import numpy.typing as npt
 from tempfile import NamedTemporaryFile
 from pathlib import Path
+from functools import reduce
 import flowkit as fk  # type: ignore
 from flowkit import Dimension, Sample, GatingStrategy
 from flowkit._models.gates import RectangleGate  # type: ignore
 from flowkit._models.transforms import LogicleTransform  # type: ignore
 from typing import Any, NamedTuple, NewType
-from scipy.stats import gaussian_kde  # type: ignore
+from scipy.stats import gaussian_kde, norm  # type: ignore
+from scipy.stats.mstats import mquantiles  # type: ignore
+from scipy.integrate import trapezoid  # type: ignore
 from bokeh.plotting import show, output_file
 from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
 from common.io import read_fcs
 from common.functional import fmap_maybe, from_maybe
-
-PeakCoord = tuple[float, float]
-PeakCoords = list[PeakCoord]
 
 OM = NewType("OM", str)
 Color = NewType("Color", str)
@@ -69,9 +69,11 @@ GateRangeMap = dict[OM, dict[Color | None, GateRanges]]
 
 
 class AutoGateConfig(NamedTuple):
-    min_peak: float
-    max_valley: float
+    neighbor_frac: float
+    min_prob: float
     bw: float | str
+    inner_sigma: float
+    outer_sigma: float
 
 
 class SampleConfig(NamedTuple):
@@ -79,17 +81,28 @@ class SampleConfig(NamedTuple):
     rainbow: AutoGateConfig
 
 
+class D1Root(NamedTuple):
+    """1st derivative roots of f, either a "peak" or "valley" for f."""
+
+    x: float
+    is_peak: bool
+
+
 # TODO these are likely going to be flags, hardcoded for now to make things easy
 DEF_SC = SampleConfig(
     non_rainbow=AutoGateConfig(
         bw=0.2,
-        min_peak=0.05,
-        max_valley=100,
+        neighbor_frac=0.5,
+        min_prob=0.1,
+        inner_sigma=1.5,
+        outer_sigma=1.96,
     ),
     rainbow=AutoGateConfig(
-        bw=0.05,
-        min_peak=0.05,
-        max_valley=100,
+        bw=0.025,
+        neighbor_frac=0.5,
+        min_prob=0.1,
+        inner_sigma=1.5,
+        outer_sigma=1.96,
     ),
 )
 
@@ -98,26 +111,25 @@ def path_to_color(p: Path) -> Color | None:
     return next((v for k, v in COLOR_MAP.items() if k in p.name), None)
 
 
-def find_differential_peaks(
-    positions: npt.NDArray[np.float32],
-    pdf: npt.NDArray[np.float32],
-    dd_pdf: npt.NDArray[np.float32],
-    signal: int,
-) -> PeakCoords:
-    mask = np.zeros((positions.size), dtype=bool)
-    mask[1:-1] = dd_pdf == signal
-    x = positions[mask].tolist()
-    y = pdf[mask].tolist()
-    coords = list(zip(x, y))
-    coords.sort(key=lambda x: -x[1])
-    return coords
+V_F32 = npt.NDArray[np.float32]
+
+
+def find_differential_peaks(x: V_F32, ddy: V_F32, is_peak: bool) -> list[D1Root]:
+    signal = -2 if is_peak else 2
+    # When we compute the double derivatives we consider the previous 2 points.
+    # We care about the 2nd one which is either higher or lower than both the
+    # points around it (ie peak or valley). The ddy array is missing the first 2
+    # elements, so it actually starts counting from the 3rd point. Add 1 so the
+    # resulting index lines up with the 2nd like we want.
+    roots = np.where(ddy == signal)[0] + 1
+    return [*map(lambda x: D1Root(x, is_peak), roots)]
 
 
 def find_density_peaks(
-    x: npt.NDArray[np.float32],
+    d: V_F32,
     bw_method: str | float,
     n: int = 512,
-) -> tuple[PeakCoords, PeakCoords]:
+) -> tuple[V_F32, V_F32, list[int]]:
     """Find density peaks in vector x using "double diff" method.
 
     Density is computed with n evenly spaced intervals over x using a gaussian
@@ -125,54 +137,151 @@ def find_density_peaks(
 
     Specifically, find the places where the 1st derivative goes immediately from
     positive to negative (peaks) or the reverse (valleys).
-
-    Return list of peaks and valley positions.
     """
 
-    if x.size < 3:
+    if d.size < 3:
         raise ValueError("need at least two points to compute peaks/valleys")
-    positions = np.linspace(x.min(), x.max(), n)
-    kernel = gaussian_kde(x, bw_method=bw_method)
-    pdf = kernel(positions)
+    x = np.linspace(d.min(), d.max(), n)
+    kernel = gaussian_kde(d, bw_method=bw_method)
+    y = kernel(x)
     # TODO this will fail if the peak consists of more than one point (ie
     # multiple consecutive points are tied for the local maximum); in practice
     # these will be rare, but don't say I didn't warn you when this turns out
     # not to be forever ;)
-    dd_pdf = np.diff(np.sign(np.diff(pdf)))
-    peaks = find_differential_peaks(positions, pdf, dd_pdf, -2)
-    valleys = find_differential_peaks(positions, pdf, dd_pdf, 2)
-    return (peaks, valleys)
+    ddy = np.diff(np.sign(np.diff(y)))
+    # peaks = find_differential_peaks(x, ddy, True)
+    # valleys = find_differential_peaks(x, ddy, False)
+    # return (x, y, sorted(peaks + valleys, key=lambda p: p.x))
+
+    # When we compute the double derivatives we consider the previous 2 points.
+    # We care about the 2nd one which is either higher or lower than both the
+    # points around it (ie peak or valley). The ddy array is missing the first 2
+    # elements, so it actually starts counting from the 3rd point. Add 1 so the
+    # resulting index lines up with the 2nd like we want.
+    valleys = (np.where(ddy == 2)[0] + 1).tolist()
+    return (x, y, valleys)
+
+
+def norm_quantiles(inner_sigma: float, outer_sigma: float) -> tuple[float, float]:
+    if outer_sigma > inner_sigma > 0:
+        ValueError("must be: outer > inner > 0")
+    center = norm.cdf(0) - norm.cdf(-inner_sigma)
+    tail = norm.cdf(-inner_sigma) - norm.cdf(-outer_sigma)
+    q1 = tail / (center + tail) / 2
+    return (q1, 1 - q1)
+
+
+class Interval(NamedTuple):
+    a: int
+    b: int
 
 
 def make_min_density_serial_gates(
     ac: AutoGateConfig,
-    x: npt.NDArray[np.float32],
+    d: V_F32,
     k: int,
-) -> list[float]:
-    """Gate vector x by minimum density between at most k peaks.
+) -> list[tuple[float, float]]:
+    """Gate vector x by minimum density. Return at most k peaks"""
+    if k < 1:
+        raise ValueError(f"k must be >= 1, got {k}")
 
-    bw is the bandwidth method or size to be passed to the Gaussian density
-    estimation function.
+    # x: discretized interval of vector d
+    # y: KDE function values over x
+    x, y, valleys = find_density_peaks(d, bw_method=ac.bw)
 
-    min_peak is the minimum size of each peak (in terms of probability).
-    max_valley is analogous to the maximum size of each valley.
-    """
-    peaks, valleys = find_density_peaks(x, bw_method=ac.bw)
-    if len(peaks) < 2:
-        raise ValueError(f"could not make serial gates, got {len(peaks)} peaks")
-    n_peaks = min(k, len(peaks))
-    top_peaks = [
-        p[0] for p in sorted(peaks[:n_peaks], key=lambda p: p[0]) if ac.min_peak < p[1]
+    def compute_area(i: Interval) -> float:
+        a: float = trapezoid(y[i.a : i.b], x[i.a : i.b])
+        return a
+
+    # Normality test overview:
+    #
+    # This test is designed to find peaks that are either "just noise" or those
+    # that overlap sufficiently with their neighbor(s) that they are not totally
+    # distinguishable.
+    #
+    # The basic assumption is that "good" peaks are normal, and that all gates
+    # include some fraction of the total distribution. For sake of argument take
+    # this fraction to be ~95%. In this case, the gate should be 4 sigma wide,
+    # and ~72% of the data should be within 1 sigma (note this is different from
+    # the usual 68% since we are normalizing to what is in the gate, which is
+    # ~95%/2 sigma). We can easily test this by computing quantiles over the
+    # data at 14%/86% and checking if they are 1 sigma away from either edge of
+    # the gate. Stringency can be altered by changing the confidence interval,
+    # which is equivalent to changing the fraction of data we expect to be
+    # within the gate assuming normality.
+    q1, q3 = norm_quantiles(ac.inner_sigma, ac.outer_sigma)
+
+    def test_quantiles(i: Interval) -> tuple[bool, bool]:
+        xi = x[i.a]
+        xf = x[i.b]
+        e = d[(xi <= d) & (d < xf)]
+        res = mquantiles(e, (q1, q3))
+        x25: float = res[0]
+        x75: float = res[1]
+        dx = 0.5 * (x75 - x25) * (ac.outer_sigma / ac.inner_sigma - 1)
+        return (xi <= x25 - dx, x75 + dx <= xf)
+
+    def merge_intervals(acc: list[Interval], i: Interval) -> list[Interval]:
+        # Overall rules:
+        # - Intervals can only be merged if they are adjacent (end of previous
+        #   is equal to start of current)
+        # - Intervals are merged if either the previous or current interval
+        #   fails the normality test.
+        # - All final peaks must pass the normality test on both sides. This
+        #   implies that we can drop non-adjacent intervals that fail the
+        #   normality test.
+        # - Intervals that are prior to the previous are considered OK and do
+        #   not need to be considered.
+        this_left = test_quantiles(i)[0]
+        if len(acc) == 0:
+            return [i] if this_left else []
+        else:
+            prev_i = acc[-1]
+            prev_right = test_quantiles(prev_i)[1]
+            if prev_i.b == i.a:
+                # If two intervals are adjacent and they are both normal, then
+                # treat them as different peaks. Otherwise merge them. In the
+                # next iteration we will check if this new peak should be
+                # merged, added, or dropped.
+                rest = (
+                    [prev_i, i]
+                    if prev_right and this_left
+                    else [Interval(prev_i.a, i.b)]
+                )
+            else:
+                # If intervals are not adjacent, we cannot merge at all. Test
+                # normality and drop either side that fails.
+                rest = [prev_i] if prev_right else [] + [i] if this_left else []
+            return acc[:-1] + rest
+
+    # 1. Zip valleys into intervals and compute probability in each interval,
+    # removing intervals below threshold.
+    intervals = [
+        i
+        for a, b in zip([0, *valleys], [*valleys, x.size - 1])
+        if compute_area(i := Interval(a, b)) >= ac.min_prob
     ]
-    peak_intervals = [*zip(top_peaks[:-1], top_peaks[1:])]
-    low_valleys = [v[0] for v in valleys if v[1] < ac.max_valley]
-    contained_valleys = [
-        [x for x in low_valleys if x0 < x < x1] for x0, x1 in peak_intervals
-    ]
-    if any([len(v) == 0 for v in contained_valleys]):
-        raise ValueError("not all peak intervals contain a valley")
-    min_valleys = [v[-1] for v in contained_valleys]
-    return min_valleys
+
+    # 2. Drop any leading intervals that fail the normality test on the left
+    # side, since have nothing with which they can be merged which could fix.
+    # clean_left = [*dropwhile(lambda i: not test_quantiles(i)[0], intervals)]
+
+    if len(intervals) == 0:
+        return []
+
+    # 3. Merge/drop intervals depending on if they are adjacent and/or fail
+    # the normality test.
+    merged = reduce(merge_intervals, intervals[1:], [intervals[0]])
+
+    if len(merged) == 0:
+        return []
+
+    # 4. Test the last interval for normality on the right side, since this is
+    # the only case that can't be caught with the reduction above.
+    final = merged if test_quantiles(merged[-1])[1] else merged[:-1]
+
+    # 5. Return top k intervals by area, sorted by position
+    return [(x[i.a], x[i.b]) for i in sorted(sorted(final, key=compute_area)[:k])]
 
 
 def build_gating_strategy(
@@ -248,8 +357,6 @@ def build_gating_strategy(
             boundaries = make_min_density_serial_gates(sc.rainbow, x, 8)
         gates = []
         if len(boundaries) > 0:
-            lower: list[float] = [-0.2, *boundaries]
-            upper: list[float] = [*boundaries, 1.0]
             gates = [
                 RectangleGate(
                     f"{c}_{i}",
@@ -262,7 +369,7 @@ def build_gating_strategy(
                         )
                     ],
                 )
-                for i, (x0, x1) in enumerate(zip(lower, upper))
+                for i, (x0, x1) in enumerate(boundaries)
             ]
         for g in gates:
             g_strat.add_gate(g, ("root", "beads"))
