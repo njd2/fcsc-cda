@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+import json
 import math
 import argparse
 import sys
@@ -94,14 +95,14 @@ DEF_SC = SampleConfig(
         bw=0.2,
         neighbor_frac=0.5,
         min_prob=0.1,
-        inner_sigma=1.5,
+        inner_sigma=1,
         outer_sigma=1.96,
     ),
     rainbow=AutoGateConfig(
         bw=0.025,
         neighbor_frac=0.5,
         min_prob=0.1,
-        inner_sigma=1.5,
+        inner_sigma=1,
         outer_sigma=1.96,
     ),
 )
@@ -176,11 +177,66 @@ class Interval(NamedTuple):
     b: int
 
 
+class NormalityTest(NamedTuple):
+    left_passing: bool
+    right_passing: bool
+    xi: float
+    x05: float
+    x25: float
+    x75: float
+    x95: float
+    xf: float
+    dx: float
+
+
+IntervalTest = tuple[Interval, NormalityTest]
+
+
+class XInterval(NamedTuple):
+    x0: float
+    x1: float
+
+
+class ValleyPoint(NamedTuple):
+    x: float
+    y: float
+
+
+class SerialGateResult(NamedTuple):
+    # actual gates as list of intervals on the input data axis
+    xintervals: list[XInterval]
+    # debug stuff:
+    # list of valley coordinates in the probability distribution
+    valley_points: list[ValleyPoint]
+    initial_intervals: list[tuple[Interval, float, NormalityTest]]
+    filtered_intervals: list[tuple[Interval, NormalityTest]]
+    merged_intervals: list[tuple[Interval, NormalityTest]]
+
+    @property
+    def json(self) -> dict[str, Any]:
+        return {
+            "xintervals": [i._asdict() for i in self.xintervals],
+            "valley_points": [v._asdict() for v in self.valley_points],
+            "initial_intervals": [
+                {"interval": i._asdict(), "area": a, "normality": n._asdict()}
+                for i, a, n in self.initial_intervals
+            ],
+            "filtered_intervals": [
+                {"interval": i._asdict(), "normality": n._asdict()}
+                for i, a, n in self.initial_intervals
+            ],
+            "merged_intervals": [
+                {"interval": i._asdict(), "normality": n._asdict()}
+                for i, n in self.merged_intervals
+            ],
+        }
+
+
 def make_min_density_serial_gates(
     ac: AutoGateConfig,
     d: V_F32,
     k: int,
-) -> list[tuple[float, float]]:
+) -> SerialGateResult:
     """Gate vector x by minimum density. Return at most k peaks"""
     if k < 1:
         raise ValueError(f"k must be >= 1, got {k}")
@@ -188,10 +244,10 @@ def make_min_density_serial_gates(
     # x: discretized interval of vector d
     # y: KDE function values over x
     x, y, valleys = find_density_peaks(d, bw_method=ac.bw)
+    valley_points = [ValleyPoint(float(x[v]), float(y[v])) for v in valleys]
 
     def compute_area(i: Interval) -> float:
-        a: float = trapezoid(y[i.a : i.b], x[i.a : i.b])
-        return a
+        return float(trapezoid(y[i.a : i.b], x[i.a : i.b]))
 
     # Normality test overview:
     #
@@ -211,17 +267,19 @@ def make_min_density_serial_gates(
     # within the gate assuming normality.
     q1, q3 = norm_quantiles(ac.inner_sigma, ac.outer_sigma)
 
-    def test_quantiles(i: Interval) -> tuple[bool, bool]:
-        xi = x[i.a]
-        xf = x[i.b]
+    def test_quantiles(i: Interval) -> NormalityTest:
+        xi = float(x[i.a])
+        xf = float(x[i.b])
         e = d[(xi <= d) & (d < xf)]
         res = mquantiles(e, (q1, q3))
-        x25: float = res[0]
-        x75: float = res[1]
+        x25 = float(res[0])
+        x75 = float(res[1])
         dx = 0.5 * (x75 - x25) * (ac.outer_sigma / ac.inner_sigma - 1)
-        return (xi <= x25 - dx, x75 + dx <= xf)
+        x05 = x25 - dx
+        x95 = x75 + dx
+        return NormalityTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
 
-    def merge_intervals(acc: list[Interval], i: Interval) -> list[Interval]:
+    def merge_intervals(acc: list[IntervalTest], x: IntervalTest) -> list[IntervalTest]:
         # Overall rules:
         # - Intervals can only be merged if they are adjacent (end of previous
         #   is equal to start of current)
@@ -232,56 +290,77 @@ def make_min_density_serial_gates(
         #   normality test.
         # - Intervals that are prior to the previous are considered OK and do
         #   not need to be considered.
-        this_left = test_quantiles(i)[0]
+        this_left = x[1].left_passing
         if len(acc) == 0:
-            return [i] if this_left else []
+            return [x] if this_left else []
         else:
-            prev_i = acc[-1]
-            prev_right = test_quantiles(prev_i)[1]
+            prev = acc[-1]
+            prev_i = acc[-1][0]
+            prev_right = prev[1].right_passing
             if prev_i.b == i.a:
                 # If two intervals are adjacent and they are both normal, then
                 # treat them as different peaks. Otherwise merge them. In the
                 # next iteration we will check if this new peak should be
                 # merged, added, or dropped.
-                rest = (
-                    [prev_i, i]
-                    if prev_right and this_left
-                    else [Interval(prev_i.a, i.b)]
-                )
+                if prev_right and this_left:
+                    rest = [prev, x]
+                else:
+                    merged_i = Interval(prev_i.a, i.b)
+                    merged_test = test_quantiles(merged_i)
+                    rest = [(merged_i, merged_test)]
             else:
                 # If intervals are not adjacent, we cannot merge at all. Test
                 # normality and drop either side that fails.
-                rest = [prev_i] if prev_right else [] + [i] if this_left else []
+                rest = [prev] if prev_right else [] + [x] if this_left else []
             return acc[:-1] + rest
 
-    # 1. Zip valleys into intervals and compute probability in each interval,
+    # Zip valleys into intervals and compute probability in each interval,
     # removing intervals below threshold.
     intervals = [
-        i
+        (i := Interval(a, b), compute_area(i), test_quantiles(i))
         for a, b in zip([0, *valleys], [*valleys, x.size - 1])
-        if compute_area(i := Interval(a, b)) >= ac.min_prob
+    ]
+    big_intervals = [(i, n) for i, a, n in intervals if a > ac.min_prob]
+
+    if len(big_intervals) > 0:
+        # Merge/drop intervals depending on if they are adjacent and/or fail
+        # the normality test.
+        merged = reduce(merge_intervals, big_intervals[1:], [big_intervals[0]])
+        # Test the last interval for normality on the right side, since this is
+        # the only case that can't be caught with the reduction above.
+        final = (
+            merged if len(merged) > 0 and merged[-1][1].right_passing else merged[:-1]
+        )
+    else:
+        final = []
+
+    # Return top k intervals by area, sorted by position
+    x_intervals = [
+        XInterval(float(x[i.a]), float(x[i.b]))
+        for i in sorted(sorted((x[0] for x in final), key=compute_area)[:k])
     ]
 
-    # 2. Drop any leading intervals that fail the normality test on the left
-    # side, since have nothing with which they can be merged which could fix.
-    # clean_left = [*dropwhile(lambda i: not test_quantiles(i)[0], intervals)]
+    return SerialGateResult(
+        xintervals=x_intervals,
+        valley_points=valley_points,
+        initial_intervals=intervals,
+        filtered_intervals=big_intervals,
+        merged_intervals=final,
+    )
 
-    if len(intervals) == 0:
-        return []
 
-    # 3. Merge/drop intervals depending on if they are adjacent and/or fail
-    # the normality test.
-    merged = reduce(merge_intervals, intervals[1:], [intervals[0]])
+class GatingStrategyDebug(NamedTuple):
+    filename: str
+    serial: dict[Color, SerialGateResult | None]
 
-    if len(merged) == 0:
-        return []
-
-    # 4. Test the last interval for normality on the right side, since this is
-    # the only case that can't be caught with the reduction above.
-    final = merged if test_quantiles(merged[-1])[1] else merged[:-1]
-
-    # 5. Return top k intervals by area, sorted by position
-    return [(x[i.a], x[i.b]) for i in sorted(sorted(final, key=compute_area)[:k])]
+    @property
+    def json(self) -> dict[str, Any]:
+        return {
+            "filename": self.filename,
+            "serial": {
+                k: None if v is None else v.json for k, v in self.serial.items()
+            },
+        }
 
 
 def build_gating_strategy(
@@ -289,7 +368,7 @@ def build_gating_strategy(
     gs: GateRanges,
     fcs_path: Path,
     scatteronly: bool,
-) -> tuple[GatingStrategy, Sample, npt.NDArray[np.bool_]]:
+) -> tuple[GatingStrategy, Sample, npt.NDArray[np.bool_], GatingStrategyDebug]:
     bead_color = path_to_color(fcs_path)
     g_strat = GatingStrategy()
 
@@ -311,7 +390,7 @@ def build_gating_strategy(
     mask = res.get_gate_membership("beads")
 
     if scatteronly:
-        return g_strat, smp, mask
+        return g_strat, smp, mask, GatingStrategyDebug(fcs_path.name, {})
 
     # Apply logicle transform to each color channel. In this case there should
     # be relatively few events in the negative range, so A should be 0. Set M to
@@ -344,36 +423,40 @@ def build_gating_strategy(
     # channel. In all cases, place gate using peak/valley heuristic for finding
     # "large spikes" in the bead population. Do this on transformed data since
     # this is the only sane way to resolve the lower peaks.
+    gate_results = {}
     for c in COLORS:
         # non rainbow beads should have two defined peaks in the channel for
         # that measures their color
-        boundaries = []
+        res = None
         x = df_beads_x[c].values
         if bead_color is not None and c == bead_color:
-            boundaries = make_min_density_serial_gates(sc.non_rainbow, x, 2)
+            res = make_min_density_serial_gates(sc.non_rainbow, x, 2)
         # rainbow beads are defined in all channels and there should be 8 peaks
         # at most
         elif bead_color is None:
-            boundaries = make_min_density_serial_gates(sc.rainbow, x, 8)
-        gates = []
-        if len(boundaries) > 0:
-            gates = [
+            res = make_min_density_serial_gates(sc.rainbow, x, 8)
+        gate_results[c] = res
+        gates = (
+            []
+            if res is None
+            else [
                 RectangleGate(
                     f"{c}_{i}",
                     [
                         Dimension(
                             c,
                             transformation_ref=f"{c}_logicle",
-                            range_min=x0,
-                            range_max=x1,
+                            range_min=s.x0,
+                            range_max=s.x1,
                         )
                     ],
                 )
-                for i, (x0, x1) in enumerate(boundaries)
+                for i, s in enumerate(res.xintervals)
             ]
+        )
         for g in gates:
             g_strat.add_gate(g, ("root", "beads"))
-    return g_strat, smp, mask
+    return g_strat, smp, mask, GatingStrategyDebug(fcs_path.name, gate_results)
 
 
 def apply_gates_to_sample(
@@ -382,8 +465,8 @@ def apply_gates_to_sample(
     fcs_path: Path,
     colors: list[Color],
     scatteronly: bool,
-) -> Any:
-    g_strat, smp, bead_mask = build_gating_strategy(sc, gs, fcs_path, scatteronly)
+) -> tuple[Any, GatingStrategyDebug]:
+    g_strat, smp, bead_mask, res = build_gating_strategy(sc, gs, fcs_path, scatteronly)
 
     df = smp.as_dataframe(source="raw")
     fsc_max = df["fsc_a"].max()
@@ -399,9 +482,9 @@ def apply_gates_to_sample(
     )
 
     if scatteronly:
-        return row(p0)
+        return row(p0), res
 
-    color_gates: dict[Color, list[float]] = {}
+    color_gates: dict[Color, list[tuple[float, float]]] = {}
     for gname, gpath in g_strat.get_child_gate_ids("beads", ("root",)):
         g = g_strat.get_gate(gname, gpath)
         # ASSUME each gate is a rectangle gate with one dimension
@@ -410,8 +493,7 @@ def apply_gates_to_sample(
         dim = g.get_dimension(color)
         if _color not in color_gates:
             color_gates[_color] = []
-        color_gates[_color].append(dim.max)
-    color_gates = {k: sorted(v)[0:-1] for k, v in color_gates.items()}
+        color_gates[_color].append((dim.min, dim.max))
 
     df_beads_x = smp.as_dataframe(source="xform", event_mask=bead_mask)
     smp_colors = Sample(df_beads_x, sample_id=str(fcs_path.name))
@@ -419,10 +501,13 @@ def apply_gates_to_sample(
     for c in colors:
         p = smp_colors.plot_histogram(c, source="raw", x_range=(-0.2, 1))
         if c in color_gates:
-            p.vspan(x=color_gates[c], color="red")
+            p.vspan(x=[g[0] for g in color_gates[c]], color="#ff0000")
+            p.vspan(
+                x=[g[1] for g in color_gates[c]], color="#00ff00", line_dash="dashed"
+            )
         ps.append(p)
 
-    return row(p0, *ps)
+    return row(p0, *ps), res
 
 
 def read_path_map(files_path: Path) -> dict[OM, list[Path]]:
@@ -495,28 +580,31 @@ def make_plots(
     rainbow: bool,
     colors: list[Color],
     scatteronly: bool,
+    debug: Path | bool,
 ) -> None:
     all_gs = read_gate_ranges(ranges_path)
     path_map = read_path_map(files_path)
     paths = path_map[om]
 
+    non_rainbow_results = [
+        apply_gates_to_sample(
+            DEF_SC,
+            all_gs[om][path_to_color(p)],
+            p,
+            colors,
+            scatteronly,
+        )
+        for p in paths
+        if RAINBOW_PAT not in p.name
+    ]
+    non_rainbow_rows = [r[0] for r in non_rainbow_results]
+    non_rainbow_debug = [r[1] for r in non_rainbow_results]
+
     non_rainbow_tab = TabPanel(
-        child=column(
-            *[
-                apply_gates_to_sample(
-                    DEF_SC,
-                    all_gs[om][path_to_color(p)],
-                    p,
-                    colors,
-                    scatteronly,
-                )
-                for p in paths
-                if RAINBOW_PAT not in p.name
-            ]
-        ),
+        child=column(non_rainbow_rows),
         title="Non Rainbow",
     )
-    rainbow_plot = next(
+    rainbow_row, rainbow_debug = next(
         (
             apply_gates_to_sample(
                 DEF_SC,
@@ -528,10 +616,10 @@ def make_plots(
             for p in paths
             if RAINBOW_PAT in p.name
         ),
-        None,
+        (None, None),
     )
-    if rainbow_plot:
-        rainbow_tab = TabPanel(child=column(rainbow_plot), title="Rainbow")
+    if rainbow_row:
+        rainbow_tab = TabPanel(child=column(rainbow_row), title="Rainbow")
         page = Tabs(
             tabs=(
                 [rainbow_tab, non_rainbow_tab]
@@ -544,13 +632,17 @@ def make_plots(
     # open but don't close temp file to save plot
     tf = NamedTemporaryFile(suffix="_sop1.html", delete_on_close=False, delete=False)
     output_file(tf.name)
+    if debug is not None:
+        with open(debug, "w") as f:
+            arr = non_rainbow_debug + ([] if rainbow_debug is None else [rainbow_debug])
+            json.dump([a.json for a in arr], f)
     show(page)
 
 
 def write_gate(om: OM, ranges: Path, fcs: Path, out: Path | None) -> None:
     all_gs = read_gate_ranges(ranges)
     color = path_to_color(fcs)
-    gs, _, _ = build_gating_strategy(DEF_SC, all_gs[om][color], fcs, False)
+    gs, _, _, _ = build_gating_strategy(DEF_SC, all_gs[om][color], fcs, False)
     if out is not None:
         with open(out, "wb") as f:
             fk.export_gatingml(gs, f)
@@ -588,6 +680,8 @@ def list_oms(files_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    # parser.add_argument("--verbose", "-v", action="count", default=0)
+
     subparsers = parser.add_subparsers(dest="cmd")
 
     list_parser = subparsers.add_parser("list", help="list all org/machine IDs")
@@ -614,6 +708,11 @@ def main() -> None:
         action="store_true",
         help="only include scatter",
     )
+    plot_parser.add_argument(
+        "-d",
+        "--debugpath",
+        help="path to save debug json output",
+    )
 
     write_gate_parser = subparsers.add_parser(
         "write_gate",
@@ -628,12 +727,6 @@ def main() -> None:
     write_gates_parser.add_argument("files", help="path to list of files")
     write_gates_parser.add_argument("gates", help="path to list of gate ranges")
     write_gates_parser.add_argument("-o", "--out", help="output directory")
-    write_gates_parser.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        help="print debug output",
-    )
 
     parsed = parser.parse_args(sys.argv[1:])
 
@@ -648,6 +741,7 @@ def main() -> None:
             parsed.rainbow,
             COLORS if parsed.colors is None else parsed.colors.split(","),
             parsed.scatteronly,
+            parsed.debugpath,
         )
 
     if parsed.cmd == "write_gate":
