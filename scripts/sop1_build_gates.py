@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import numpy as np
 import numpy.typing as npt
+from itertools import combinations
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 from functools import reduce
@@ -15,7 +16,7 @@ import flowkit as fk  # type: ignore
 from flowkit import Dimension, Sample, GatingStrategy
 from flowkit._models.gates import RectangleGate  # type: ignore
 from flowkit._models.transforms import LogicleTransform  # type: ignore
-from typing import Any, NamedTuple, NewType
+from typing import Any, NamedTuple, NewType, TypeVar
 from scipy.stats import gaussian_kde, norm  # type: ignore
 from scipy.stats.mstats import mquantiles  # type: ignore
 from scipy.integrate import trapezoid  # type: ignore
@@ -24,6 +25,8 @@ from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
 from common.io import read_fcs
 from common.functional import fmap_maybe, from_maybe
+
+X = TypeVar("X")
 
 OM = NewType("OM", str)
 Color = NewType("Color", str)
@@ -101,7 +104,7 @@ DEF_SC = SampleConfig(
     rainbow=AutoGateConfig(
         bw=0.025,
         neighbor_frac=0.5,
-        min_prob=0.1,
+        min_prob=0.08,
         inner_sigma=1,
         outer_sigma=1.96,
     ),
@@ -172,11 +175,6 @@ def norm_quantiles(inner_sigma: float, outer_sigma: float) -> tuple[float, float
     return (q1, 1 - q1)
 
 
-class Interval(NamedTuple):
-    a: int
-    b: int
-
-
 class NormalityTest(NamedTuple):
     left_passing: bool
     right_passing: bool
@@ -187,6 +185,29 @@ class NormalityTest(NamedTuple):
     x95: float
     xf: float
     dx: float
+
+    @property
+    def passing(self) -> bool:
+        return self.right_passing and self.left_passing
+
+
+class Interval(NamedTuple):
+    a: int
+    b: int
+
+
+class TestInterval(NamedTuple):
+    interval: Interval
+    area: float
+    normality: NormalityTest
+
+    @property
+    def json(self) -> dict[str, Any]:
+        return {
+            "interval": self.interval._asdict(),
+            "area": self.area,
+            "normality": self.normality._asdict(),
+        }
 
 
 IntervalTest = tuple[Interval, NormalityTest]
@@ -208,28 +229,31 @@ class SerialGateResult(NamedTuple):
     # debug stuff:
     # list of valley coordinates in the probability distribution
     valley_points: list[ValleyPoint]
-    initial_intervals: list[tuple[Interval, float, NormalityTest]]
-    filtered_intervals: list[tuple[Interval, NormalityTest]]
-    merged_intervals: list[tuple[Interval, NormalityTest]]
+    initial_intervals: list[TestInterval]
+    merged_intervals: list[TestInterval]
+    final_intervals: list[TestInterval]
 
     @property
     def json(self) -> dict[str, Any]:
         return {
             "xintervals": [i._asdict() for i in self.xintervals],
             "valley_points": [v._asdict() for v in self.valley_points],
-            "initial_intervals": [
-                {"interval": i._asdict(), "area": a, "normality": n._asdict()}
-                for i, a, n in self.initial_intervals
-            ],
-            "filtered_intervals": [
-                {"interval": i._asdict(), "normality": n._asdict()}
-                for i, a, n in self.initial_intervals
-            ],
-            "merged_intervals": [
-                {"interval": i._asdict(), "normality": n._asdict()}
-                for i, n in self.merged_intervals
-            ],
+            "initial_intervals": [i.json for i in self.initial_intervals],
+            "merged_intervals": [i.json for i in self.merged_intervals],
+            "final_intervals": [i.json for i in self.final_intervals],
         }
+
+
+def slice_combinations(xs: list[Interval]) -> list[list[Interval]]:
+    n = len(xs) - 1
+    slices = [
+        [c + 1 for c in cs] for i in range(n) for cs in combinations(range(n), i + 1)
+    ]
+    ys = [
+        [Interval(xs[x].a, xs[y - 1].b) for x, y in zip([0, *ss], [*ss, len(xs)])]
+        for ss in slices
+    ]
+    return [xs, *ys]
 
 
 def make_min_density_serial_gates(
@@ -267,7 +291,7 @@ def make_min_density_serial_gates(
     # within the gate assuming normality.
     q1, q3 = norm_quantiles(ac.inner_sigma, ac.outer_sigma)
 
-    def test_quantiles(i: Interval) -> NormalityTest:
+    def test_normality(i: Interval) -> NormalityTest:
         xi = float(x[i.a])
         xf = float(x[i.b])
         e = d[(xi <= d) & (d < xf)]
@@ -279,74 +303,104 @@ def make_min_density_serial_gates(
         x95 = x75 + dx
         return NormalityTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
 
-    def merge_intervals(acc: list[IntervalTest], x: IntervalTest) -> list[IntervalTest]:
-        # Overall rules:
-        # - Intervals can only be merged if they are adjacent (end of previous
-        #   is equal to start of current)
-        # - Intervals are merged if either the previous or current interval
-        #   fails the normality test.
-        # - All final peaks must pass the normality test on both sides. This
-        #   implies that we can drop non-adjacent intervals that fail the
-        #   normality test.
-        # - Intervals that are prior to the previous are considered OK and do
-        #   not need to be considered.
-        this_left = x[1].left_passing
-        if len(acc) == 0:
-            return [x] if this_left else []
-        else:
-            prev = acc[-1]
-            prev_i = acc[-1][0]
-            prev_right = prev[1].right_passing
-            if prev_i.b == i.a:
-                # If two intervals are adjacent and they are both normal, then
-                # treat them as different peaks. Otherwise merge them. In the
-                # next iteration we will check if this new peak should be
-                # merged, added, or dropped.
-                if prev_right and this_left:
-                    rest = [prev, x]
-                else:
-                    merged_i = Interval(prev_i.a, i.b)
-                    merged_test = test_quantiles(merged_i)
-                    rest = [(merged_i, merged_test)]
-            else:
-                # If intervals are not adjacent, we cannot merge at all. Test
-                # normality and drop either side that fails.
-                rest = [prev] if prev_right else [] + [x] if this_left else []
-            return acc[:-1] + rest
+    # def merge_intervals(acc: list[IntervalTest], x: IntervalTest) -> list[IntervalTest]:
+    #     # Overall rules:
+    #     # - Intervals can only be merged if they are adjacent (end of previous
+    #     #   is equal to start of current)
+    #     # - Intervals are merged if either the previous or current interval
+    #     #   fails the normality test.
+    #     # - All final peaks must pass the normality test on both sides. This
+    #     #   implies that we can drop non-adjacent intervals that fail the
+    #     #   normality test.
+    #     # - Intervals that are prior to the previous are considered OK and do
+    #     #   not need to be considered.
+    #     this_left = x[1].left_passing
+    #     if len(acc) == 0:
+    #         return [x] if this_left else []
+    #     else:
+    #         prev = acc[-1]
+    #         prev_i = acc[-1][0]
+    #         prev_right = prev[1].right_passing
+    #         if prev_i.b == i.a:
+    #             # If two intervals are adjacent and they are both normal, then
+    #             # treat them as different peaks. Otherwise merge them. In the
+    #             # next iteration we will check if this new peak should be
+    #             # merged, added, or dropped.
+    #             if prev_right and this_left:
+    #                 rest = [prev, x]
+    #             else:
+    #                 merged_i = Interval(prev_i.a, i.b)
+    #                 merged_test = test_normality(merged_i)
+    #                 rest = [(merged_i, merged_test)]
+    #         else:
+    #             # If intervals are not adjacent, we cannot merge at all. Test
+    #             # normality and drop either side that fails.
+    #             rest = [prev] if prev_right else [] + [x] if this_left else []
+    #         return acc[:-1] + rest
 
     # Zip valleys into intervals and compute probability in each interval,
     # removing intervals below threshold.
+
+    def find_merge_combination(xs: list[Interval]) -> list[TestInterval]:
+        combos = [
+            [TestInterval(y, compute_area(y), test_normality(y)) for y in ys]
+            for ys in slice_combinations(xs)
+        ]
+        return max(combos, key=lambda ys: sum((a for _, a, n in ys if n.passing)))
+
     intervals = [
-        (i := Interval(a, b), compute_area(i), test_quantiles(i))
+        TestInterval(i := Interval(a, b), compute_area(i), test_normality(i))
         for a, b in zip([0, *valleys], [*valleys, x.size - 1])
     ]
-    big_intervals = [(i, n) for i, a, n in intervals if a > ac.min_prob]
 
-    if len(big_intervals) > 0:
-        # Merge/drop intervals depending on if they are adjacent and/or fail
-        # the normality test.
-        merged = reduce(merge_intervals, big_intervals[1:], [big_intervals[0]])
-        # Test the last interval for normality on the right side, since this is
-        # the only case that can't be caught with the reduction above.
-        final = (
-            merged if len(merged) > 0 and merged[-1][1].right_passing else merged[:-1]
+    passing = [i.normality.passing and i.area >= ac.min_prob for i in intervals]
+    passing_intervals = [i for i, t in zip(intervals, passing) if t]
+    nonpassing_intervals = [i.interval for i, t in zip(intervals, passing) if not t]
+
+    if len(nonpassing_intervals) > 0:
+        grouped = reduce(
+            lambda acc, i: (
+                [*acc[:-1], [*acc[-1], i]] if acc[-1][-1].b == i.a else [*acc, [i]]
+            ),
+            nonpassing_intervals[1:],
+            [[nonpassing_intervals[0]]],
         )
+        merged_intervals = [
+            c for g in grouped for c in find_merge_combination(g) if c.normality.passing
+        ]
     else:
-        final = []
+        merged_intervals = []
 
-    # Return top k intervals by area, sorted by position
+    final = [i for i in merged_intervals + passing_intervals if i.area > ac.min_prob]
+
     x_intervals = [
-        XInterval(float(x[i.a]), float(x[i.b]))
-        for i in sorted(sorted((x[0] for x in final), key=compute_area)[:k])
+        XInterval(float(x[i.interval.a]), float(x[i.interval.b]))
+        for i in sorted(sorted(final, key=lambda i: i.area)[:k])
     ]
 
+    # TODO also return large peaks that failed so we know how much area we
+    # missed and where it is
     return SerialGateResult(
         xintervals=x_intervals,
         valley_points=valley_points,
         initial_intervals=intervals,
-        filtered_intervals=big_intervals,
-        merged_intervals=final,
+        merged_intervals=merged_intervals,
+        final_intervals=final,
     )
+
+    # if len(big_intervals) > 0:
+    #     # Merge/drop intervals depending on if they are adjacent and/or fail
+    #     # the normality test.
+    #     merged = reduce(merge_intervals, big_intervals[1:], [big_intervals[0]])
+    #     # Test the last interval for normality on the right side, since this is
+    #     # the only case that can't be caught with the reduction above.
+    #     final = (
+    #         merged if len(merged) > 0 and merged[-1][1].right_passing else merged[:-1]
+    #     )
+    # else:
+    #     final = []
+
+    # # Return top k intervals by area, sorted by position
 
 
 class GatingStrategyDebug(NamedTuple):
