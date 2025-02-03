@@ -4,6 +4,7 @@ src = Path("resources")
 
 res_int = Path("results/intermediate")
 res_int_fcs = res_int / "fcs"
+res_int_gates = res_int / "gates"
 res_meta = res_int / "meta"
 res_meta_std = res_meta / "standardized_fcs"
 res_time = res_int / "time"
@@ -12,7 +13,7 @@ res_final = Path("results/final")
 res_final_summary = res_final / "summaries"
 
 ################################################################################
-# stage 1 - metadata filtering and standardization
+# Metadata filtering and standardization
 #
 # Find issues with each dataset based solely on the metadata of each file. This
 # includes things like voltage and event count. Critically, we can eliminate
@@ -165,7 +166,7 @@ rule summarize_metadata_errors:
 
 
 ################################################################################
-# check time channel for issues
+# Clean up time channel
 #
 # We expect the time channel to be "linear" (meaning always increasing at a
 # steady rate) if this isn't true there might be an issue.
@@ -245,6 +246,32 @@ rule gate_time_channel:
 #         "envs/fcs.yml"
 #     script:
 #         "scripts/python/fcs/compute_power_spectra.py"
+
+
+################################################################################
+# Run SOP 1
+#
+# This requires that we (manually) gate the two scatter channels to correctly
+# identify the beads, since doing this automatically is probably quite hopeless.
+# Beyond that, this will gate the FC and rainbow beads, use the former to
+# calibrate each channel, then run a regression on the rainbow beads to verify
+# that they all line up.
+
+
+rule sop1_generate_gates:
+    input:
+        files=rules.gate_time_channel.output,
+        boundaries="static/sop1_gates.tsv",
+        params=rules.read_standardized_fcs_meta.output.params,
+    output:
+        res_int_gates / "sop1" / "flag.txt",
+    log:
+        res_int_gates / "sop1" / "debug.json",
+    threads: 20
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/sop1_generate_gates.py"
 
 
 rule all:
