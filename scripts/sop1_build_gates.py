@@ -69,7 +69,7 @@ class GateRanges(NamedTuple):
     ssc_max: int
 
 
-# None Color = rainbow
+# None = rainbow
 GateRangeMap = dict[OM, dict[Color | None, GateRanges]]
 
 
@@ -79,8 +79,6 @@ class AutoGateConfig(NamedTuple):
     bw: float | str
     tail_offset: float
     tail_prob: float
-    # inner_sigma: float
-    # outer_sigma: float
 
 
 class SampleConfig(NamedTuple):
@@ -108,7 +106,7 @@ DEF_SC = SampleConfig(
         bw=0.025,
         neighbor_frac=0.5,
         min_prob=0.08,
-        tail_offset=0.255,
+        tail_offset=0.255 * 0.8,
         tail_prob=0.141,
     ),
 )
@@ -156,9 +154,6 @@ def find_density_peaks(
     # these will be rare, but don't say I didn't warn you when this turns out
     # not to be forever ;)
     ddy = np.diff(np.sign(np.diff(y)))
-    # peaks = find_differential_peaks(x, ddy, True)
-    # valleys = find_differential_peaks(x, ddy, False)
-    # return (x, y, sorted(peaks + valleys, key=lambda p: p.x))
 
     # When we compute the double derivatives we consider the previous 2 points.
     # We care about the 2nd one which is either higher or lower than both the
@@ -366,20 +361,6 @@ def make_min_density_serial_gates(
         merged_intervals=merged_intervals,
         final_intervals=final,
     )
-
-    # if len(big_intervals) > 0:
-    #     # Merge/drop intervals depending on if they are adjacent and/or fail
-    #     # the normality test.
-    #     merged = reduce(merge_intervals, big_intervals[1:], [big_intervals[0]])
-    #     # Test the last interval for normality on the right side, since this is
-    #     # the only case that can't be caught with the reduction above.
-    #     final = (
-    #         merged if len(merged) > 0 and merged[-1][1].right_passing else merged[:-1]
-    #     )
-    # else:
-    #     final = []
-
-    # # Return top k intervals by area, sorted by position
 
 
 class GatingStrategyDebug(NamedTuple):
@@ -781,7 +762,6 @@ def list_oms(files: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--verbose", "-v", action="count", default=0)
 
     subparsers = parser.add_subparsers(dest="cmd")
 
