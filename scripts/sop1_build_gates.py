@@ -77,8 +77,10 @@ class AutoGateConfig(NamedTuple):
     neighbor_frac: float
     min_prob: float
     bw: float | str
-    inner_sigma: float
-    outer_sigma: float
+    tail_offset: float
+    tail_prob: float
+    # inner_sigma: float
+    # outer_sigma: float
 
 
 class SampleConfig(NamedTuple):
@@ -99,15 +101,15 @@ DEF_SC = SampleConfig(
         bw=0.2,
         neighbor_frac=0.5,
         min_prob=0.1,
-        inner_sigma=1,
-        outer_sigma=1.96,
+        tail_offset=0.255,
+        tail_prob=0.141,
     ),
     rainbow=AutoGateConfig(
         bw=0.025,
         neighbor_frac=0.5,
         min_prob=0.08,
-        inner_sigma=1,
-        outer_sigma=1.96,
+        tail_offset=0.255,
+        tail_prob=0.141,
     ),
 )
 
@@ -274,23 +276,35 @@ def make_min_density_serial_gates(
     def compute_area(i: Interval) -> float:
         return float(trapezoid(y[i.a : i.b], x[i.a : i.b]))
 
-    # Normality test overview:
+    # Quantile test overview:
     #
     # This test is designed to find peaks that are either "just noise" or those
     # that overlap sufficiently with their neighbor(s) that they are not totally
     # distinguishable.
     #
-    # The basic assumption is that "good" peaks are normal, and that all gates
-    # include some fraction of the total distribution. For sake of argument take
-    # this fraction to be ~95%. In this case, the gate should be 4 sigma wide,
-    # and ~72% of the data should be within 1 sigma (note this is different from
-    # the usual 68% since we are normalizing to what is in the gate, which is
-    # ~95%/2 sigma). We can easily test this by computing quantiles over the
-    # data at 14%/86% and checking if they are 1 sigma away from either edge of
-    # the gate. Stringency can be altered by changing the confidence interval,
-    # which is equivalent to changing the fraction of data we expect to be
-    # within the gate assuming normality.
-    q1, q3 = norm_quantiles(ac.inner_sigma, ac.outer_sigma)
+    # We have two parameters that describe the key aspects of a
+    # "good distribution". The first, tail_prob, defines that total probability
+    # that should be in a "tail" (one sided). The second, tail_offset, describes
+    # the length of the tail in data units (in this case whatever that means on
+    # a logicle scale).
+    #
+    # The test involves finding the amount of data at the lower/upper quantiles
+    # bordering each tail (defined by tail_prob), computing the distance between
+    # these quantiles, then computing the allowed length of the tail based on
+    # tail_offset. If either tail extends outside the gate boundaries, the test
+    # fails. In other words, a bad distribution is one whose tails on either
+    # side are too fat.
+    #
+    # This has a nice mapping to a normal distribution if one wants to be
+    # mathematically purist. Setting tail_prob = 0.141 (probability b/t 1 and
+    # 1.96) and tail_offset to 0.255 (1.96 sigma / 1 sigma / 2) corresponds to
+    # expecting a gate to encapsulate at least 95% of a normal distribution.
+    # This is nice in theory, but in practice many peaks are either skewed or
+    # slightly fatter than normal, so one needs to use a bit of slack when
+    # setting these values.
+
+    q1 = ac.tail_prob
+    q3 = 1 - ac.tail_prob
 
     def test_normality(i: Interval) -> NormalityTest:
         xi = float(x[i.a])
@@ -299,7 +313,7 @@ def make_min_density_serial_gates(
         res = mquantiles(e, (q1, q3))
         x25 = float(res[0])
         x75 = float(res[1])
-        dx = 0.5 * (x75 - x25) * (ac.outer_sigma / ac.inner_sigma - 1)
+        dx = 0.5 * (x75 - x25) * (1 + ac.tail_offset)
         x05 = x25 - dx
         x95 = x75 + dx
         return NormalityTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
