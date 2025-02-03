@@ -46,3 +46,7 @@ def partition(f: Callable[[X], bool], xs: Iterable[X]) -> tuple[list[X], list[X]
         else:
             zs.append(x)
     return (ys, zs)
+
+
+def unzip2(xs: list[tuple[X, Y]]) -> tuple[list[X], list[Y]]:
+    return [x[0] for x in xs], [x[1] for x in xs]
