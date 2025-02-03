@@ -230,6 +230,7 @@ class SerialGateResult(NamedTuple):
     initial_intervals: list[TestInterval]
     merged_intervals: list[TestInterval]
     final_intervals: list[TestInterval]
+    failed_intervals: list[TestInterval]
 
     @property
     def json(self) -> dict[str, Any]:
@@ -239,6 +240,7 @@ class SerialGateResult(NamedTuple):
             "initial_intervals": [i.json for i in self.initial_intervals],
             "merged_intervals": [i.json for i in self.merged_intervals],
             "final_intervals": [i.json for i in self.final_intervals],
+            "failed_intervals": [i.json for i in self.failed_intervals],
         }
 
 
@@ -327,30 +329,31 @@ def make_min_density_serial_gates(
         for a, b in zip([0, *valleys], [*valleys, x.size - 1])
     ]
 
-    passing = [i.normality.passing and i.area >= ac.min_prob for i in intervals]
-    passing_intervals = [i for i, t in zip(intervals, passing) if t]
-    nonpassing_intervals = [i.interval for i, t in zip(intervals, passing) if not t]
+    pass_mask = [i.normality.passing and i.area >= ac.min_prob for i in intervals]
+    pass_nomerge = [i for i, t in zip(intervals, pass_mask) if t]
+    fail = [i.interval for i, t in zip(intervals, pass_mask) if not t]
 
-    if len(nonpassing_intervals) > 0:
+    if len(fail) > 0:
         grouped = reduce(
             lambda acc, i: (
                 [*acc[:-1], [*acc[-1], i]] if acc[-1][-1].b == i.a else [*acc, [i]]
             ),
-            nonpassing_intervals[1:],
-            [[nonpassing_intervals[0]]],
+            fail[1:],
+            [[fail[0]]],
         )
-        merged_intervals = [
-            c for g in grouped for c in find_merge_combination(g) if c.normality.passing
-        ]
+        merged = [c for g in grouped for c in find_merge_combination(g)]
     else:
-        merged_intervals = []
+        merged = []
 
-    final = [i for i in merged_intervals + passing_intervals if i.area > ac.min_prob]
+    pass_merge = [i for i in merged if i.normality.passing]
+    fail_merge = [i for i in merged if not i.normality.passing]
 
-    x_intervals = [
+    final = [i for i in pass_merge + pass_nomerge if i.area > ac.min_prob]
+
+    x_intervals = sorted(
         XInterval(float(x[i.interval.a]), float(x[i.interval.b]))
-        for i in sorted(sorted(final, key=lambda i: i.area)[:k])
-    ]
+        for i in sorted(final, key=lambda i: i.area)[:k]
+    )
 
     # TODO also return large peaks that failed so we know how much area we
     # missed and where it is
@@ -358,8 +361,9 @@ def make_min_density_serial_gates(
         xintervals=x_intervals,
         valley_points=valley_points,
         initial_intervals=intervals,
-        merged_intervals=merged_intervals,
+        merged_intervals=pass_merge,
         final_intervals=final,
+        failed_intervals=fail_merge,
     )
 
 
