@@ -30,6 +30,7 @@ X = TypeVar("X")
 
 OM = NewType("OM", str)
 Color = NewType("Color", str)
+FCSName = NewType("FCSName", str)
 
 RAINBOW_PAT = "RCP-30"
 
@@ -420,6 +421,7 @@ class GatingStrategyDebug(NamedTuple):
 def build_gating_strategy(
     sc: SampleConfig,
     gs: GateRanges,
+    color_ranges: dict[Color, int],
     fcs_path: Path,
     scatteronly: bool,
 ) -> tuple[GatingStrategy, Sample, npt.NDArray[np.bool_], GatingStrategyDebug]:
@@ -453,17 +455,17 @@ def build_gating_strategy(
     # according to 5% negative heuristic (see Parks et al (the Logicle Paper)
     # for formulas/rationale for doing this).
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
-    color_max = max([df_beads[c].max() for c in COLORS])
     trans = {}
     for c in COLORS:
         arr = df_beads[c].values
         arr_neg = arr[arr < 0]
+        maxrange = float(color_ranges[c])
         if arr_neg.size < 10:
-            trans[c] = LogicleTransform(color_max, 1.0, LogicleM, 0)
+            trans[c] = LogicleTransform(maxrange, 1.0, LogicleM, 0)
         else:
             low_ref = np.quantile(arr_neg, 0.05)
-            best_W = (LogicleM - math.log10(color_max / abs(low_ref))) / 2
-            trans[c] = LogicleTransform(color_max, best_W, LogicleM, 0)
+            best_W = (LogicleM - math.log10(maxrange / abs(low_ref))) / 2
+            trans[c] = LogicleTransform(maxrange, best_W, LogicleM, 0)
 
     for k, v in trans.items():
         g_strat.add_transform(f"{k}_logicle", v)
@@ -516,11 +518,14 @@ def build_gating_strategy(
 def apply_gates_to_sample(
     sc: SampleConfig,
     gs: GateRanges,
+    color_ranges: dict[Color, int],
     fcs_path: Path,
     colors: list[Color],
     scatteronly: bool,
 ) -> tuple[Any, GatingStrategyDebug]:
-    g_strat, smp, bead_mask, res = build_gating_strategy(sc, gs, fcs_path, scatteronly)
+    g_strat, smp, bead_mask, res = build_gating_strategy(
+        sc, gs, color_ranges, fcs_path, scatteronly
+    )
 
     df = smp.as_dataframe(source="raw")
     fsc_max = df["fsc_a"].max()
@@ -564,12 +569,19 @@ def apply_gates_to_sample(
     return row(p0, *ps), res
 
 
-def read_path_map(files_path: Path) -> dict[OM, list[Path]]:
+FileMap = dict[OM, list[Path]]
+
+RangeMap = dict[FCSName, dict[Color, int]]
+
+FileRangeMap = dict[OM, dict[Path, dict[Color, int]]]
+
+
+def read_path_map(files: Path) -> FileMap:
     """Read a tsv like "index, filepath" and return paths for SOP 1."""
-    df = pd.read_table(files_path, usecols=[1], names=["file_path"])
-    acc: dict[OM, list[Path]] = {}
-    for _, x in df["file_path"].items():
-        p = Path(x)
+    ser = pd.read_table(files, usecols=[1], names=["file_path"])["file_path"]
+    acc: FileMap = {}
+    for _, file_path in ser.items():
+        p = Path(file_path)
         xs = p.name.split("_")
         om = OM(f"{xs[2]}_{xs[3]}")
         if xs[5] == "SOP-01" and om not in NO_SCATTER:
@@ -578,9 +590,37 @@ def read_path_map(files_path: Path) -> dict[OM, list[Path]]:
             acc[om] += [p]
     for k in acc:
         acc[k].sort(
-            key=lambda x: next((i for i, o in enumerate(FILE_ORDER) if o in x.name), -1)
+            key=lambda x: next(
+                (i for i, o in enumerate(FILE_ORDER) if o in x.name), -1
+            ),
         )
     return acc
+
+
+def read_range_map(params: Path) -> RangeMap:
+    df = pd.read_table(
+        params,
+        usecols=["filepath", "maxrange", "shortname"],
+    )
+    print(df)
+    acc: RangeMap = {}
+    for file_path, maxrange, shortname in df.itertuples(index=False):
+        color = Color(shortname)
+        if color in COLORS:
+            p = FCSName(Path(file_path).name)
+            if p not in acc:
+                acc[p] = {}
+            acc[p][color] = int(maxrange)
+    return acc
+
+
+def read_path_range_map(files: Path, params: Path) -> FileRangeMap:
+    path_map = read_path_map(files)
+    range_map = read_range_map(params)
+    return {
+        om: {p: range_map[FCSName(p.name)] for p in paths}
+        for om, paths in path_map.items()
+    }
 
 
 def df_to_colormap(om: str, df: pd.DataFrame) -> dict[Color | None, GateRanges]:
@@ -628,27 +668,29 @@ def read_gate_ranges(ranges_path: Path) -> GateRangeMap:
 
 
 def make_plots(
-    ranges_path: Path,
-    files_path: Path,
+    ranges: Path,
+    files: Path,
+    params: Path,
     om: OM,
     rainbow: bool,
     colors: list[Color],
     scatteronly: bool,
     debug: Path | bool,
 ) -> None:
-    all_gs = read_gate_ranges(ranges_path)
-    path_map = read_path_map(files_path)
-    paths = path_map[om]
+    all_gs = read_gate_ranges(ranges)
+    path_range_map = read_path_range_map(files, params)
+    paths = path_range_map[om]
 
     non_rainbow_results = [
         apply_gates_to_sample(
             DEF_SC,
             all_gs[om][path_to_color(p)],
+            color_ranges,
             p,
             colors,
             scatteronly,
         )
-        for p in paths
+        for p, color_ranges in paths.items()
         if RAINBOW_PAT not in p.name
     ]
     non_rainbow_rows = [r[0] for r in non_rainbow_results]
@@ -663,11 +705,12 @@ def make_plots(
             apply_gates_to_sample(
                 DEF_SC,
                 all_gs[om][None],
+                color_ranges,
                 p,
                 colors,
                 scatteronly,
             )
-            for p in paths
+            for p, color_ranges in paths.items()
             if RAINBOW_PAT in p.name
         ),
         (None, None),
@@ -693,10 +736,22 @@ def make_plots(
     show(page)
 
 
-def write_gate(om: OM, ranges: Path, fcs: Path, out: Path | None) -> None:
+def write_gate_inner(
+    om: OM,
+    ranges: Path,
+    color_ranges: dict[Color, int],
+    fcs: Path,
+    out: Path | None,
+) -> None:
     all_gs = read_gate_ranges(ranges)
     color = path_to_color(fcs)
-    gs, _, _, _ = build_gating_strategy(DEF_SC, all_gs[om][color], fcs, False)
+    gs, _, _, _ = build_gating_strategy(
+        DEF_SC,
+        all_gs[om][color],
+        color_ranges,
+        fcs,
+        False,
+    )
     if out is not None:
         with open(out, "wb") as f:
             fk.export_gatingml(gs, f)
@@ -706,28 +761,43 @@ def write_gate(om: OM, ranges: Path, fcs: Path, out: Path | None) -> None:
             fk.export_gatingml(gs, f)
 
 
+def write_gate(
+    om: OM,
+    ranges: Path,
+    params: Path,
+    fcs: Path,
+    out: Path | None,
+) -> None:
+    range_map = read_range_map(params)
+    color_ranges = range_map[FCSName(fcs.name)]
+    write_gate_inner(om, ranges, color_ranges, fcs, out)
+
+
 def write_all_gates(
     files: Path,
     ranges: Path,
+    params: Path,
     out_dir: Path | None,
     debug: bool,
 ) -> None:
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
-    path_map = read_path_map(files)
-    for om, fcs_paths in path_map.items():
+    path_range_map = read_path_range_map(files, params)
+    for om, path_ranges in path_range_map.items():
         if debug:
             print(f"OM: {om}")
-        for p in fcs_paths:
+        for p, color_ranges in path_ranges.items():
             if debug:
                 print(f"FCS file: {p.name}")
             color = from_maybe("rainbow", path_to_color(p))
             fn = f"{om}-{color}.xml"
-            write_gate(om, ranges, p, fmap_maybe(lambda p: p / fn, out_dir))
+            write_gate_inner(
+                om, ranges, color_ranges, p, fmap_maybe(lambda p: p / fn, out_dir)
+            )
 
 
-def list_oms(files_path: Path) -> None:
-    xs = read_path_map(files_path)
+def list_oms(files: Path) -> None:
+    xs = read_path_map(files)
     for x in xs:
         print(x)
 
@@ -745,6 +815,7 @@ def main() -> None:
     plot_parser.add_argument("om", help="org/machine ID")
     plot_parser.add_argument("files", help="path to list of files")
     plot_parser.add_argument("gates", help="path to list of gate ranges")
+    plot_parser.add_argument("params", help="path to list of parameters")
     plot_parser.add_argument(
         "-R",
         "--rainbow",
@@ -775,6 +846,7 @@ def main() -> None:
     write_gate_parser.add_argument("om", help="org/machine ID")
     write_gate_parser.add_argument("files", help="path to list of files")
     write_gate_parser.add_argument("gates", help="path to list of gate ranges")
+    write_gate_parser.add_argument("params", help="path to list of params")
     write_gate_parser.add_argument("-o", "--out", help="output directory")
 
     write_gates_parser = subparsers.add_parser("write_gates", help="write all gates")
@@ -791,6 +863,7 @@ def main() -> None:
         make_plots(
             Path(parsed.gates),
             Path(parsed.files),
+            Path(parsed.params),
             OM(parsed.om),
             parsed.rainbow,
             COLORS if parsed.colors is None else parsed.colors.split(","),
@@ -803,6 +876,7 @@ def main() -> None:
             OM(parsed.om),
             Path(parsed.files),
             Path(parsed.gates),
+            Path(parsed.params),
             fmap_maybe(Path, parsed.out),
         )
 
@@ -810,6 +884,7 @@ def main() -> None:
         write_all_gates(
             Path(parsed.files),
             Path(parsed.gates),
+            Path(parsed.params),
             fmap_maybe(Path, parsed.out),
             parsed.debug,
         )
