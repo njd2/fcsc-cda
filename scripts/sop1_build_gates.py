@@ -249,6 +249,8 @@ class SerialGateResult(NamedTuple):
 
 def slice_combinations(xs: list[Interval]) -> list[list[Interval]]:
     n = len(xs) - 1
+    if n < 0:
+        return []
     slices = [
         [c + 1 for c in cs] for i in range(n) for cs in combinations(range(n), i + 1)
     ]
@@ -256,7 +258,7 @@ def slice_combinations(xs: list[Interval]) -> list[list[Interval]]:
         [Interval(xs[x].a, xs[y - 1].b) for x, y in zip([0, *ss], [*ss, len(xs)])]
         for ss in slices
     ]
-    return [xs, *ys]
+    return [[Interval(xs[0].a, xs[-1].b)], *ys]
 
 
 def make_min_density_serial_gates(
@@ -313,48 +315,10 @@ def make_min_density_serial_gates(
         res = mquantiles(e, (q1, q3))
         x25 = float(res[0])
         x75 = float(res[1])
-        dx = 0.5 * (x75 - x25) * (1 + ac.tail_offset)
+        dx = (x75 - x25) * (ac.tail_offset / (1 - 2 * ac.tail_offset))
         x05 = x25 - dx
         x95 = x75 + dx
         return NormalityTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
-
-    # def merge_intervals(acc: list[IntervalTest], x: IntervalTest) -> list[IntervalTest]:
-    #     # Overall rules:
-    #     # - Intervals can only be merged if they are adjacent (end of previous
-    #     #   is equal to start of current)
-    #     # - Intervals are merged if either the previous or current interval
-    #     #   fails the normality test.
-    #     # - All final peaks must pass the normality test on both sides. This
-    #     #   implies that we can drop non-adjacent intervals that fail the
-    #     #   normality test.
-    #     # - Intervals that are prior to the previous are considered OK and do
-    #     #   not need to be considered.
-    #     this_left = x[1].left_passing
-    #     if len(acc) == 0:
-    #         return [x] if this_left else []
-    #     else:
-    #         prev = acc[-1]
-    #         prev_i = acc[-1][0]
-    #         prev_right = prev[1].right_passing
-    #         if prev_i.b == i.a:
-    #             # If two intervals are adjacent and they are both normal, then
-    #             # treat them as different peaks. Otherwise merge them. In the
-    #             # next iteration we will check if this new peak should be
-    #             # merged, added, or dropped.
-    #             if prev_right and this_left:
-    #                 rest = [prev, x]
-    #             else:
-    #                 merged_i = Interval(prev_i.a, i.b)
-    #                 merged_test = test_normality(merged_i)
-    #                 rest = [(merged_i, merged_test)]
-    #         else:
-    #             # If intervals are not adjacent, we cannot merge at all. Test
-    #             # normality and drop either side that fails.
-    #             rest = [prev] if prev_right else [] + [x] if this_left else []
-    #         return acc[:-1] + rest
-
-    # Zip valleys into intervals and compute probability in each interval,
-    # removing intervals below threshold.
 
     def find_merge_combination(xs: list[Interval]) -> list[TestInterval]:
         combos = [
