@@ -602,7 +602,6 @@ def read_range_map(params: Path) -> RangeMap:
         params,
         usecols=["filepath", "maxrange", "shortname"],
     )
-    print(df)
     acc: RangeMap = {}
     for file_path, maxrange, shortname in df.itertuples(index=False):
         color = Color(shortname)
