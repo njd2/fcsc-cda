@@ -24,7 +24,7 @@ from bokeh.plotting import show, output_file
 from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
 from common.io import read_fcs
-from common.functional import fmap_maybe, from_maybe
+from common.functional import fmap_maybe, from_maybe, span, partition
 
 X = TypeVar("X")
 
@@ -272,6 +272,14 @@ def make_min_density_serial_gates(
     x, y, valleys = find_density_peaks(d, bw_method=ac.bw)
     valley_points = [ValleyPoint(float(x[v]), float(y[v])) for v in valleys]
 
+    def select_data(i: Interval) -> tuple[float, float, npt.NDArray[np.float32]]:
+        xi = float(x[i.a])
+        xf = float(x[i.b])
+        return xi, xf, d[(xi <= d) & (d < xf)]
+
+    def is_empty(i: Interval) -> bool:
+        return select_data(i)[2].size == 0
+
     def compute_area(i: Interval) -> float:
         return float(trapezoid(y[i.a : i.b], x[i.a : i.b]))
 
@@ -304,63 +312,88 @@ def make_min_density_serial_gates(
 
     q1 = ac.tail_prob
     q3 = 1 - ac.tail_prob
+    f = ac.tail_offset / (1 - 2 * ac.tail_offset)
 
     def test_normality(i: Interval) -> NormalityTest:
-        xi = float(x[i.a])
-        xf = float(x[i.b])
-        e = d[(xi <= d) & (d < xf)]
+        xi, xf, e = select_data(i)
+        if e.size == 0:
+            raise ValueError("attempting to get quantiles for empty vector")
         res = mquantiles(e, (q1, q3))
         x25 = float(res[0])
         x75 = float(res[1])
-        dx = (x75 - x25) * (ac.tail_offset / (1 - 2 * ac.tail_offset))
+        dx = (x75 - x25) * f
         x05 = x25 - dx
         x95 = x75 + dx
         return NormalityTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
 
     def find_merge_combination(xs: list[Interval]) -> list[TestInterval]:
+        print(len(xs))
         combos = [
             [TestInterval(y, compute_area(y), test_normality(y)) for y in ys]
             for ys in slice_combinations(xs)
         ]
         return max(combos, key=lambda ys: sum((a for _, a, n in ys if n.passing)))
 
-    intervals = [
-        TestInterval(i := Interval(a, b), compute_area(i), test_normality(i))
-        for a, b in zip([0, *valleys], [*valleys, x.size - 1])
+    # Make intervals by interlacing valleys with 0 and N as initial/final bounds
+    raw_intervals = [
+        Interval(a, b) for a, b in zip([0, *valleys], [*valleys, x.size - 1])
     ]
 
-    pass_mask = [i.normality.passing and i.area >= ac.min_prob for i in intervals]
-    pass_nomerge = [i for i, t in zip(intervals, pass_mask) if t]
-    fail = [i.interval for i, t in zip(intervals, pass_mask) if not t]
+    # Numpy will freak out if any intervals are empty when attempting to
+    # compute quantiles. Merge empty intervals arbitrarily to deal with this.
+    # Start by merging empty contiguous intervals on the left to the right,
+    # and then merge empty intervals left going through the list.
+    empty, rest = span(is_empty, raw_intervals)
+    nonempty_left = (
+        [Interval(empty[0].a, rest[0].b), *rest[1:]]
+        if len(empty) > 0 and len(rest) > 0
+        else rest
+    )
+    nonempty = reduce(
+        lambda acc, i: (
+            [*acc[:-1], Interval(acc[-1].a, i.b)] if is_empty(i) else acc + [i]
+        ),
+        nonempty_left[1:],
+        [nonempty_left[0]],
+    )
 
+    # Compute the area and normality test for non-empty intervals
+    test_intervals = [
+        TestInterval(i, compute_area(i), test_normality(i)) for i in nonempty
+    ]
+    pass_nomerge, fail = partition(
+        lambda i: i.area >= ac.min_prob and i.normality.passing,
+        test_intervals,
+    )
+
+    # Merge combinations of failed intervals; keep the combinations that
+    # maximizes area under valid peaks
     if len(fail) > 0:
+        _fail = [x.interval for x in fail]
         grouped = reduce(
             lambda acc, i: (
                 [*acc[:-1], [*acc[-1], i]] if acc[-1][-1].b == i.a else [*acc, [i]]
             ),
-            fail[1:],
-            [[fail[0]]],
+            _fail[1:],
+            [[_fail[0]]],
         )
         merged = [c for g in grouped for c in find_merge_combination(g)]
     else:
         merged = []
 
-    pass_merge = [i for i in merged if i.normality.passing]
-    fail_merge = [i for i in merged if not i.normality.passing]
-
+    # Combine everything and only keep the peaks above the area cutoff. Keep the
+    # top k peaks and return final peaks sorted by position.
+    pass_merge, fail_merge = partition(lambda i: i.normality.passing, merged)
     final = [i for i in pass_merge + pass_nomerge if i.area > ac.min_prob]
-
     x_intervals = sorted(
         XInterval(float(x[i.interval.a]), float(x[i.interval.b]))
         for i in sorted(final, key=lambda i: i.area)[:k]
     )
 
-    # TODO also return large peaks that failed so we know how much area we
-    # missed and where it is
     return SerialGateResult(
         xintervals=x_intervals,
         valley_points=valley_points,
-        initial_intervals=intervals,
+        initial_intervals=test_intervals,
         merged_intervals=pass_merge,
         final_intervals=final,
         failed_intervals=fail_merge,
@@ -813,6 +846,7 @@ def main() -> None:
     write_gates_parser = subparsers.add_parser("write_gates", help="write all gates")
     write_gates_parser.add_argument("files", help="path to list of files")
     write_gates_parser.add_argument("gates", help="path to list of gate ranges")
+    write_gates_parser.add_argument("params", help="path to list of params")
     write_gates_parser.add_argument("-o", "--out", help="output directory")
 
     parsed = parser.parse_args(sys.argv[1:])
@@ -847,7 +881,7 @@ def main() -> None:
             Path(parsed.gates),
             Path(parsed.params),
             fmap_maybe(Path, parsed.out),
-            parsed.debug,
+            False,
         )
 
 

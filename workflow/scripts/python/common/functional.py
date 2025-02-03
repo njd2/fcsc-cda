@@ -1,4 +1,4 @@
-from typing import TypeVar, Callable
+from typing import TypeVar, Callable, Iterable
 
 X = TypeVar("X")
 Y = TypeVar("Y")
@@ -26,3 +26,23 @@ def float_maybe(x: str) -> float | None:
         return float(x)
     except ValueError:
         return None
+
+
+def span(f: Callable[[X], bool], xs: list[X]) -> tuple[list[X], list[X]]:
+    if len(xs) == 0:
+        return ([], [])
+    n = 0
+    while f(xs[n]):
+        n = n + 1
+    return (xs[:n], xs[n:])
+
+
+def partition(f: Callable[[X], bool], xs: Iterable[X]) -> tuple[list[X], list[X]]:
+    ys = []
+    zs = []
+    for x in xs:
+        if f(x):
+            ys.append(x)
+        else:
+            zs.append(x)
+    return (ys, zs)
