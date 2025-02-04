@@ -4,7 +4,7 @@ src = Path("resources")
 
 res_int = Path("results/intermediate")
 res_int_fcs = res_int / "fcs"
-res_int_gates = res_int / "gates"
+res_int_sop1 = res_int / "sop1"
 res_meta = res_int / "meta"
 res_meta_std = res_meta / "standardized_fcs"
 res_time = res_int / "time"
@@ -264,14 +264,27 @@ rule sop1_generate_gates:
         boundaries="static/sop1_gates.tsv",
         params=rules.read_standardized_fcs_meta.output.params,
     output:
-        res_int_gates / "sop1" / "files.tsv",
+        res_int_sop1 / "gates" / "files.tsv",
     log:
-        res_int_gates / "sop1" / "debug.json",
+        res_int_sop1 / "gates" / "debug.json",
     threads: 20
     conda:
         "envs/fcs.yml"
     script:
         "scripts/python/fcs/sop1_generate_gates.py"
+
+
+rule sop1_read_mfi:
+    input:
+        rules.sop1_generate_gates.output[0],
+    output:
+        fc=res_int_sop1 / "fcs_beads.tsv",
+        rainbow=res_int_sop1 / "rainbow_beads.tsv",
+    threads: 20
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/sop1_read_mfi.py"
 
 
 rule all:
@@ -281,5 +294,5 @@ rule all:
         rules.read_standardized_fcs_meta.output,
         # rules.compute_channel_entropies.output,
         rules.gate_time_channel.output,
-        rules.sop1_generate_gates.output,
+        rules.sop1_read_mfi.output,
         # rules.compute_power_spectra.output,

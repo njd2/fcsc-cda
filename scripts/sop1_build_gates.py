@@ -87,14 +87,14 @@ def make_plots(
         [
             apply_gates_to_sample(
                 sc,
-                all_gs[om][s1.path_to_color(p)],
+                all_gs[om][s1.path_to_color(p.path)],
                 color_ranges,
-                p,
+                p.path,
                 colors,
                 scatteronly,
             )
             for p, color_ranges in paths.items()
-            if s1.RAINBOW_PAT not in p.name
+            if s1.RAINBOW_PAT not in p.path.name
         ]
     )
 
@@ -108,12 +108,12 @@ def make_plots(
                 sc,
                 all_gs[om][None],
                 color_ranges,
-                p,
+                p.path,
                 colors,
                 scatteronly,
             )
             for p, color_ranges in paths.items()
-            if s1.RAINBOW_PAT in p.name
+            if s1.RAINBOW_PAT in p.path.name
         ),
         (None, None),
     )
@@ -180,15 +180,15 @@ def main() -> None:
         help="path to save debug json output",
     )
 
-    write_gate_parser = subparsers.add_parser(
-        "write_gate",
-        help="write gate for org/machine ID",
-    )
-    write_gate_parser.add_argument("om", help="org/machine ID")
-    write_gate_parser.add_argument("files", help="path to list of files")
-    write_gate_parser.add_argument("gates", help="path to list of gate ranges")
-    write_gate_parser.add_argument("params", help="path to list of params")
-    write_gate_parser.add_argument("-o", "--out", help="output directory")
+    # write_gate_parser = subparsers.add_parser(
+    #     "write_gate",
+    #     help="write gate for org/machine ID",
+    # )
+    # write_gate_parser.add_argument("om", help="org/machine ID")
+    # write_gate_parser.add_argument("files", help="path to list of files")
+    # write_gate_parser.add_argument("gates", help="path to list of gate ranges")
+    # write_gate_parser.add_argument("params", help="path to list of params")
+    # write_gate_parser.add_argument("-o", "--out", help="output directory")
 
     write_gates_parser = subparsers.add_parser("write_gates", help="write all gates")
     write_gates_parser.add_argument("files", help="path to list of files")
@@ -215,15 +215,15 @@ def main() -> None:
             parsed.debugpath,
         )
 
-    if parsed.cmd == "write_gate":
-        s1.write_gate(
-            s1.DEF_SC,
-            s1.OM(parsed.om),
-            Path(parsed.files),
-            Path(parsed.gates),
-            Path(parsed.params),
-            fmap_maybe(Path, parsed.out),
-        )
+    # if parsed.cmd == "write_gate":
+    #     s1.write_gate(
+    #         s1.DEF_SC,
+    #         s1.OM(parsed.om),
+    #         Path(parsed.files),
+    #         Path(parsed.gates),
+    #         Path(parsed.params),
+    #         fmap_maybe(Path, parsed.out),
+    #     )
 
     if parsed.cmd == "write_gates":
         s1.write_all_gates(

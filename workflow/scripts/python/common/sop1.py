@@ -205,8 +205,14 @@ DEF_SC = SampleConfig(
 )
 
 
+# TODO these seem more general
 def path_to_color(p: Path) -> Color | None:
     return next((v for k, v in COLOR_MAP.items() if k in p.name), None)
+
+
+def path_to_om(p: Path) -> OM:
+    s = p.name.split("_")
+    return OM(f"{s[2]}_{s[3]}")
 
 
 def find_differential_peaks(x: V_F32, ddy: V_F32, is_peak: bool) -> list[D1Root]:
@@ -337,6 +343,8 @@ def make_min_density_serial_gates(
         return NormalityTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
 
     def find_merge_combination(xs: list[Interval]) -> list[TestInterval]:
+        if len(xs) > 1000:
+            print(len(xs))
         combos = [
             [TestInterval(y, compute_area(y), test_normality(y)) for y in ys]
             for ys in slice_combinations(xs)
@@ -452,11 +460,13 @@ def build_gating_strategy(
         arr_neg = arr[arr < 0]
         maxrange = float(color_ranges[c])
         if arr_neg.size < 10:
+            # TODO make these configurable
             trans[c] = LogicleTransform(maxrange, 1.0, LogicleM, 0)
         else:
             low_ref = np.quantile(arr_neg, 0.05)
+            # and these...
             best_W = (LogicleM - math.log10(maxrange / abs(low_ref))) / 2
-            trans[c] = LogicleTransform(maxrange, best_W, LogicleM, 0)
+            trans[c] = LogicleTransform(maxrange, max(best_W, 0.25), LogicleM, 0)
 
     for k, v in trans.items():
         g_strat.add_transform(f"{k}_logicle", v)
