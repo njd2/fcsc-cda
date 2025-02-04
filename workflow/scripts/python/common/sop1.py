@@ -15,17 +15,14 @@ from typing import Any, NamedTuple, NewType
 from scipy.stats import gaussian_kde  # type: ignore
 from scipy.stats.mstats import mquantiles  # type: ignore
 from scipy.integrate import trapezoid  # type: ignore
+from multiprocessing import Pool
 from common.io import read_fcs
 from common.functional import fmap_maybe, from_maybe, span, partition
 
 OM = NewType("OM", str)
 Color = NewType("Color", str)
-FCSName = NewType("FCSName", str)
+FileIndex = NewType("FileIndex", int)
 
-FileMap = dict[OM, list[Path]]
-RangeMap = dict[FCSName, dict[Color, int]]
-FileRangeMap = dict[OM, dict[Path, dict[Color, int]]]
-V_F32 = npt.NDArray[np.float32]
 
 RAINBOW_PAT = "RCP-30"
 
@@ -55,6 +52,17 @@ FILE_ORDER = [
 COLOR_MAP = dict(zip(FILE_ORDER, COLORS))
 
 LogicleM = 4.5
+
+
+class FCSFile(NamedTuple):
+    file_index: FileIndex
+    path: Path
+
+
+FileMap = dict[OM, list[FCSFile]]
+RangeMap = dict[FileIndex, dict[Color, int]]
+FileRangeMap = dict[OM, dict[FCSFile, dict[Color, int]]]
+V_F32 = npt.NDArray[np.float32]
 
 
 class GateBoundaries(NamedTuple):
@@ -329,7 +337,6 @@ def make_min_density_serial_gates(
         return NormalityTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
 
     def find_merge_combination(xs: list[Interval]) -> list[TestInterval]:
-        print(len(xs))
         combos = [
             [TestInterval(y, compute_area(y), test_normality(y)) for y in ys]
             for ys in slice_combinations(xs)
@@ -501,20 +508,20 @@ def build_gating_strategy(
 
 def read_path_map(files: Path) -> FileMap:
     """Read a tsv like "index, filepath" and return paths for SOP 1."""
-    ser = pd.read_table(files, usecols=[1], names=["file_path"])["file_path"]
+    df = pd.read_table(files, names=["file_index", "file_path"])
     acc: FileMap = {}
-    for _, file_path in ser.items():
+    for file_index, file_path in df.itertuples(index=False):
         p = Path(file_path)
         xs = p.name.split("_")
         om = OM(f"{xs[2]}_{xs[3]}")
         if xs[5] == "SOP-01" and om not in NO_SCATTER:
             if om not in acc:
                 acc[om] = []
-            acc[om] += [p]
+            acc[om] += [FCSFile(FileIndex(int(file_index)), p)]
     for k in acc:
         acc[k].sort(
             key=lambda x: next(
-                (i for i, o in enumerate(FILE_ORDER) if o in x.name), -1
+                (i for i, o in enumerate(FILE_ORDER) if o in x.path.name), -1
             ),
         )
     return acc
@@ -523,13 +530,13 @@ def read_path_map(files: Path) -> FileMap:
 def read_range_map(params: Path) -> RangeMap:
     df = pd.read_table(
         params,
-        usecols=["filepath", "maxrange", "shortname"],
+        usecols=["file_index", "maxrange", "shortname"],
     )
     acc: RangeMap = {}
-    for file_path, maxrange, shortname in df.itertuples(index=False):
+    for file_index, maxrange, shortname in df.itertuples(index=False):
         color = Color(shortname)
         if color in COLORS:
-            p = FCSName(Path(file_path).name)
+            p = FileIndex(int(file_index))
             if p not in acc:
                 acc[p] = {}
             acc[p][color] = int(maxrange)
@@ -540,7 +547,7 @@ def read_path_range_map(files: Path, params: Path) -> FileRangeMap:
     path_map = read_path_map(files)
     range_map = read_range_map(params)
     return {
-        om: {p: range_map[FCSName(p.name)] for p in paths}
+        om: {p: range_map[p.file_index] for p in paths}
         for om, paths in path_map.items()
     }
 
@@ -589,30 +596,33 @@ def read_gate_ranges(ranges_path: Path) -> GateRangeMap:
     }
 
 
-def write_gate_inner(
-    sc: SampleConfig,
-    om: OM,
-    boundaries: Path,
-    color_ranges: dict[Color, int],
-    fcs: Path,
-    out: Path | None,
-) -> None:
-    all_gs = read_gate_ranges(boundaries)
-    color = path_to_color(fcs)
+class GateRun(NamedTuple):
+    sc: SampleConfig
+    om: OM
+    boundaries: Path
+    color_ranges: dict[Color, int]
+    fcs: FCSFile
+    out: Path | None
+
+
+def write_gate_inner(r: GateRun) -> tuple[FCSFile, Path | None]:
+    all_gs = read_gate_ranges(r.boundaries)
+    color = path_to_color(r.fcs.path)
     gs, _, _, _ = build_gating_strategy(
-        sc,
-        all_gs[om][color],
-        color_ranges,
-        fcs,
+        r.sc,
+        all_gs[r.om][color],
+        r.color_ranges,
+        r.fcs.path,
         False,
     )
-    if out is not None:
-        with open(out, "wb") as f:
+    if r.out is not None:
+        with open(r.out, "wb") as f:
             fk.export_gatingml(gs, f)
     else:
         # do some POSIX gymnastics to get stdout to accept a bytestream
         with os.fdopen(sys.stdout.fileno(), "wb", closefd=False) as f:
             fk.export_gatingml(gs, f)
+    return (r.fcs, r.out)
 
 
 def write_gate(
@@ -620,12 +630,12 @@ def write_gate(
     om: OM,
     boundaries: Path,
     params: Path,
-    fcs: Path,
+    fcs: FCSFile,
     out: Path | None,
-) -> None:
+) -> tuple[FCSFile, Path | None]:
     range_map = read_range_map(params)
-    color_ranges = range_map[FCSName(fcs.name)]
-    write_gate_inner(sc, om, boundaries, color_ranges, fcs, out)
+    color_ranges = range_map[fcs.file_index]
+    return write_gate_inner(GateRun(sc, om, boundaries, color_ranges, fcs, out))
 
 
 def write_all_gates(
@@ -634,24 +644,33 @@ def write_all_gates(
     boundaries: Path,
     params: Path,
     out_dir: Path | None,
-) -> None:
-    debug = False
+    threads: int | None = None,
+) -> list[tuple[FCSFile, Path | None]]:
+    def make_out_path(om: OM, p: Path) -> Path | None:
+        color = from_maybe("rainbow", path_to_color(p))
+        fn = f"{om}-{color}.xml"
+        return fmap_maybe(lambda p: p / fn, out_dir)
+
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
+
     path_range_map = read_path_range_map(files, params)
-    for om, path_ranges in path_range_map.items():
-        if debug:
-            print(f"OM: {om}")
-        for p, color_ranges in path_ranges.items():
-            if debug:
-                print(f"FCS file: {p.name}")
-            color = from_maybe("rainbow", path_to_color(p))
-            fn = f"{om}-{color}.xml"
-            write_gate_inner(
-                sc,
-                om,
-                boundaries,
-                color_ranges,
-                p,
-                fmap_maybe(lambda p: p / fn, out_dir),
-            )
+
+    runs = [
+        GateRun(
+            sc,
+            om,
+            boundaries,
+            color_ranges,
+            p,
+            make_out_path(om, p.path),
+        )
+        for om, path_ranges in path_range_map.items()
+        for p, color_ranges in path_ranges.items()
+    ]
+
+    if threads is None:
+        return list(map(write_gate_inner, runs))
+    else:
+        with Pool(threads) as pl:
+            return pl.map(write_gate_inner, runs)

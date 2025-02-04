@@ -260,11 +260,11 @@ rule gate_time_channel:
 
 rule sop1_generate_gates:
     input:
-        files=rules.gate_time_channel.output,
+        files=rules.gate_time_channel.output[0],
         boundaries="static/sop1_gates.tsv",
         params=rules.read_standardized_fcs_meta.output.params,
     output:
-        res_int_gates / "sop1" / "flag.txt",
+        res_int_gates / "sop1" / "files.tsv",
     log:
         res_int_gates / "sop1" / "debug.json",
     threads: 20
@@ -281,4 +281,5 @@ rule all:
         rules.read_standardized_fcs_meta.output,
         # rules.compute_channel_entropies.output,
         rules.gate_time_channel.output,
+        rules.sop1_generate_gates.output,
         # rules.compute_power_spectra.output,
