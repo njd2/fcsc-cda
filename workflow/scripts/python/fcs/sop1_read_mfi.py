@@ -1,18 +1,17 @@
 import csv
 import pandas as pd
-from itertools import groupby
 from pathlib import Path
 from typing import Any, NamedTuple
 from flowkit import parse_gating_xml, Sample  # type: ignore
 from common.io import read_fcs
 import common.sop1 as s1
-from common.functional import partition
 from multiprocessing import Pool
 
 
 class MFIResult(NamedTuple):
     gcolor: s1.Color
     peak_index: int
+    bead_count: int
     raw_mfi: float
     xform_mfi: float
 
@@ -24,18 +23,13 @@ class Meta(NamedTuple):
     om: s1.OM
 
 
-class FCLine(NamedTuple):
-    meta: Meta
-    color: s1.Color
-    mfis: list[MFIResult]
-
-
-class RainbowLine(NamedTuple):
+class Line(NamedTuple):
     meta: Meta
     mfis: list[MFIResult]
+    israinbow: bool
 
 
-def read_mfi(m: Meta) -> FCLine | RainbowLine:
+def read_mfi(m: Meta) -> Line:
     color = s1.path_to_color(m.fcs_path)
     gstrat = parse_gating_xml(m.gate_path)
     fcs = read_fcs(m.fcs_path)
@@ -53,7 +47,7 @@ def read_mfi(m: Meta) -> FCLine | RainbowLine:
         mask = res.get_gate_membership(gate_name)
         raw_mfi = df_raw[mask][gcolor].median()
         x_mfi = df_x[mask][gcolor].median()
-        return MFIResult(gcolor, i, raw_mfi, x_mfi)
+        return MFIResult(gcolor, i, mask.sum(), raw_mfi, x_mfi)
 
     if color is None:
         # rainbow beads: there should only be one color channel
@@ -71,17 +65,18 @@ def read_mfi(m: Meta) -> FCLine | RainbowLine:
                 MFIResult(
                     c,
                     i + 7 - max_index,
+                    mask.sum(),
                     df_raw[mask][c].median(),
                     df_x[mask][c].median(),
                 )
                 for c in s1.COLORS
                 for i, mask in masks.items()
             ]
-        return RainbowLine(m, mfi)
+        return Line(m, mfi, True)
     else:
         # fc beads
         mfi = [go(g[0]) for g in gstrat.get_child_gate_ids("beads")]
-        return FCLine(m, color, mfi)
+        return Line(m, mfi, False)
 
 
 def main(smk: Any) -> None:
@@ -99,21 +94,19 @@ def main(smk: Any) -> None:
     with Pool(smk.threads) as pl:
         results = pl.map(read_mfi, runs)
 
-    fs, rs = partition(lambda x: isinstance(x, FCLine), results)
-
     with open(fc_out, "wt") as fo, open(rainbow_out, "wt") as ro:
-        metaheaders = Meta._fields
-        mfiheaders = MFIResult._fields
         fw = csv.writer(fo, delimiter="\t")
         rw = csv.writer(ro, delimiter="\t")
-        fw.writerow([*metaheaders, "color", *mfiheaders])
-        rw.writerow([*metaheaders, *mfiheaders])
+        header = [*Meta._fields, *MFIResult._fields]
+        fw.writerow(header)
+        rw.writerow(header)
         for x in results:
             for m in x.mfis:
-                if isinstance(x, FCLine):
-                    fw.writerow([*x.meta, x.color, *m])
+                row = [*x.meta, *m]
+                if x.israinbow:
+                    rw.writerow(row)
                 else:
-                    rw.writerow([*x.meta, *m])
+                    fw.writerow(row)
 
 
 main(snakemake)  # type: ignore

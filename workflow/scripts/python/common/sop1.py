@@ -96,7 +96,7 @@ class D1Root(NamedTuple):
     is_peak: bool
 
 
-class NormalityTest(NamedTuple):
+class ShapeTest(NamedTuple):
     left_passing: bool
     right_passing: bool
     xi: float
@@ -120,18 +120,18 @@ class Interval(NamedTuple):
 class TestInterval(NamedTuple):
     interval: Interval
     area: float
-    normality: NormalityTest
+    shape: ShapeTest
 
     @property
     def json(self) -> dict[str, Any]:
         return {
             "interval": self.interval._asdict(),
             "area": self.area,
-            "normality": self.normality._asdict(),
+            "shape": self.shape._asdict(),
         }
 
 
-IntervalTest = tuple[Interval, NormalityTest]
+IntervalTest = tuple[Interval, ShapeTest]
 
 
 class XInterval(NamedTuple):
@@ -334,7 +334,7 @@ def make_min_density_serial_gates(
     q3 = 1 - ac.tail_prob
     f = ac.tail_offset / (1 - 2 * ac.tail_offset)
 
-    def test_normality(i: Interval) -> NormalityTest:
+    def test_shape(i: Interval) -> ShapeTest:
         xi, xf, e = select_data(i)
         if e.size == 0:
             raise ValueError("attempting to get quantiles for empty vector")
@@ -344,13 +344,11 @@ def make_min_density_serial_gates(
         dx = (x75 - x25) * f
         x05 = x25 - dx
         x95 = x75 + dx
-        return NormalityTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
+        return ShapeTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
 
     def find_merge_combination(xs: list[Interval]) -> list[TestInterval]:
-        if len(xs) > 1000:
-            print(len(xs))
         combos = [
-            [TestInterval(y, compute_area(y), test_normality(y)) for y in ys]
+            [TestInterval(y, compute_area(y), test_shape(y)) for y in ys]
             for ys in slice_combinations(xs)
         ]
         return max(combos, key=lambda ys: sum((a for _, a, n in ys if n.passing)))
@@ -378,25 +376,40 @@ def make_min_density_serial_gates(
         [nonempty_left[0]],
     )
 
-    # Compute the area and normality test for non-empty intervals
-    test_intervals = [
-        TestInterval(i, compute_area(i), test_normality(i)) for i in nonempty
-    ]
-    pass_nomerge, fail = partition(
-        lambda i: i.area >= ac.min_prob and i.normality.passing,
-        test_intervals,
-    )
+    # Compute the area and test the distribution shape for non-empty intervals.
+    test_intervals = [TestInterval(i, compute_area(i), test_shape(i)) for i in nonempty]
+
+    if len(test_intervals) > 0:
+        _pass_nomerge, _fail = partition(
+            lambda i: i.area >= ac.min_prob and i.shape.passing,
+            test_intervals[1:],
+        )
+        # The first interval is unique because this is the only peak that can
+        # plausibly be skewed so far to the left that it fails the left one side
+        # of the shape test. This is because each distribution is fundamentally
+        # a Poisson distribution (among others) and this will skew toward zero
+        # at low-N, which is expected if the dynamic range and/or detector
+        # voltage are low enough.
+        first = test_intervals[0]
+        pass_nomerge, fail = (
+            ([first, *_pass_nomerge], _fail)
+            if first.area >= ac.min_prob and first.shape.right_passing
+            else (_pass_nomerge, [first, *_fail])
+        )
+    else:
+        pass_nomerge = []
+        fail = []
 
     # Merge combinations of failed intervals; keep the combinations that
     # maximizes area under valid peaks
     if len(fail) > 0:
-        _fail = [x.interval for x in fail]
+        _fail_ints = [x.interval for x in fail]
         grouped = reduce(
             lambda acc, i: (
                 [*acc[:-1], [*acc[-1], i]] if acc[-1][-1].b == i.a else [*acc, [i]]
             ),
-            _fail[1:],
-            [[_fail[0]]],
+            _fail_ints[1:],
+            [[_fail_ints[0]]],
         )
         merged = [c for g in grouped for c in find_merge_combination(g)]
     else:
@@ -404,7 +417,7 @@ def make_min_density_serial_gates(
 
     # Combine everything and only keep the peaks above the area cutoff. Keep the
     # top k peaks and return final peaks sorted by position.
-    pass_merge, fail_merge = partition(lambda i: i.normality.passing, merged)
+    pass_merge, fail_merge = partition(lambda i: i.shape.passing, merged)
     final = [i for i in pass_merge + pass_nomerge if i.area > ac.min_prob]
     final_k = sorted(final, key=lambda i: i.area)[:k]
     final_area = sum(i.area for i in final_k)
