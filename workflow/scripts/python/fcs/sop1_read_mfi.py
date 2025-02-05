@@ -55,22 +55,31 @@ def read_mfi(m: Meta) -> FCLine | RainbowLine:
         x_mfi = df_x[mask][gcolor].median()
         return MFIResult(gcolor, i, raw_mfi, x_mfi)
 
-    # indices are numbered starting from the bottom, but the bottom peaks are
-    # also the most likely to be missed, so start counting from top down
-    # starting at 7 (to 0)
-    def fix_indices(xs: list[MFIResult]) -> list[MFIResult]:
-        maxi = max(x[1] for x in xs)
-        return [MFIResult(c, i + 7 - maxi, r, x) for (c, i, r, x) in xs]
-
     if color is None:
+        # rainbow beads: there should only be one color channel
         gs = [g[0] for g in gstrat.get_child_gate_ids("beads")]
-        mfi = [
-            y
-            for _, xs in groupby((go(g) for g in gs), lambda x: x[0])
-            for y in fix_indices(list(xs))
-        ]
+        if len(gs) == 0:
+            # this should never happen, but just in case ;)
+            mfi = []
+        else:
+            masks = {int(g.split("_")[1]): res.get_gate_membership(g) for g in gs}
+            # indices are numbered starting from the bottom, but the bottom
+            # peaks are also the most likely to be missed, so start counting
+            # from top down starting at 7 (to 0)
+            max_index = max(masks.keys())
+            mfi = [
+                MFIResult(
+                    c,
+                    i + 7 - max_index,
+                    df_raw[mask][c].median(),
+                    df_x[mask][c].median(),
+                )
+                for c in s1.COLORS
+                for i, mask in masks.items()
+            ]
         return RainbowLine(m, mfi)
     else:
+        # fc beads
         mfi = [go(g[0]) for g in gstrat.get_child_gate_ids("beads")]
         return FCLine(m, color, mfi)
 

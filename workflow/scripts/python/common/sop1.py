@@ -148,6 +148,9 @@ class SerialGateResult(NamedTuple):
     # actual gates as list of intervals on the input data axis
     xintervals: list[XInterval]
 
+    # area under all the final peaks
+    final_area: float
+
     # debug stuff:
     # list of valley coordinates in the probability distribution
     valley_points: list[ValleyPoint]
@@ -164,6 +167,7 @@ class SerialGateResult(NamedTuple):
     def json(self) -> dict[str, Any]:
         return {
             "xintervals": [i._asdict() for i in self.xintervals],
+            "final_area": self.final_area,
             "valley_points": [v._asdict() for v in self.valley_points],
             "initial_intervals": [i.json for i in self.initial_intervals],
             "merged_intervals": [i.json for i in self.merged_intervals],
@@ -174,7 +178,7 @@ class SerialGateResult(NamedTuple):
 
 class GatingStrategyDebug(NamedTuple):
     filename: str
-    serial: dict[Color, SerialGateResult | None]
+    serial: dict[Color, SerialGateResult]
 
     @property
     def json(self) -> dict[str, Any]:
@@ -402,9 +406,10 @@ def make_min_density_serial_gates(
     # top k peaks and return final peaks sorted by position.
     pass_merge, fail_merge = partition(lambda i: i.normality.passing, merged)
     final = [i for i in pass_merge + pass_nomerge if i.area > ac.min_prob]
+    final_k = sorted(final, key=lambda i: i.area)[:k]
+    final_area = sum(i.area for i in final_k)
     x_intervals = sorted(
-        XInterval(float(x[i.interval.a]), float(x[i.interval.b]))
-        for i in sorted(final, key=lambda i: i.area)[:k]
+        XInterval(float(x[i.interval.a]), float(x[i.interval.b])) for i in final_k
     )
 
     return SerialGateResult(
@@ -414,6 +419,7 @@ def make_min_density_serial_gates(
         merged_intervals=pass_merge,
         final_intervals=final,
         failed_intervals=fail_merge,
+        final_area=final_area,
     )
 
 
@@ -477,42 +483,50 @@ def build_gating_strategy(
     # Place gates on each color channel. This will be different depending on if
     # these are rainbow beads or FC beads. The former should have 8 peaks in all
     # channels, and the latter should have exactly two peaks in its own color
-    # channel. In all cases, place gate using peak/valley heuristic for finding
-    # "large spikes" in the bead population. Do this on transformed data since
-    # this is the only sane way to resolve the lower peaks.
+    # channel. In the case of rainbow, only keep the gates for the color with
+    # the most peaks (up to 8) and area under these peaks. In all cases, place
+    # gate using peak/valley heuristic for finding "large spikes" in the bead
+    # population. Do this on transformed data since this is the only sane way to
+    # resolve the lower peaks.
     gate_results = {}
-    for c in COLORS:
-        # non rainbow beads should have two defined peaks in the channel for
-        # that measures their color
-        res = None
-        x = df_beads_x[c].values
-        if bead_color is not None and c == bead_color:
-            res = make_min_density_serial_gates(sc.non_rainbow, x, 2)
-        # rainbow beads are defined in all channels and there should be 8 peaks
-        # at most
-        elif bead_color is None:
-            res = make_min_density_serial_gates(sc.rainbow, x, 8)
-        gate_results[c] = res
-        gates = (
-            []
-            if res is None
-            else [
-                RectangleGate(
-                    f"{c}_{i}",
-                    [
-                        Dimension(
-                            c,
-                            transformation_ref=f"{c}_logicle",
-                            range_min=s.x0,
-                            range_max=s.x1,
-                        )
-                    ],
+    if bead_color is None:
+        # rainbow beads
+        rs = [
+            (c, make_min_density_serial_gates(sc.rainbow, df_beads_x[c].values, 8))
+            for c in COLORS
+        ]
+        # return all results in case we want to debug them...
+        gate_results = dict(rs)
+        # ...but only keep the best color in terms of peak resolution
+        # TODO use some metric for "peak separation" here, like the distance b/t
+        # the quantiles relative to the distances b/t gates
+        maxres = max(rs, key=lambda r: (len(r[1].final_intervals), r[1].final_area))
+        gate_color = maxres[0]
+        ints = maxres[1].xintervals
+    else:
+        # fc beads
+        x = df_beads_x[bead_color].values
+        r = make_min_density_serial_gates(sc.non_rainbow, x, 2)
+        gate_results[bead_color] = r
+        gate_color = bead_color
+        ints = r.xintervals
+
+    gates = [
+        RectangleGate(
+            f"{gate_color}_{i}",
+            [
+                Dimension(
+                    gate_color,
+                    transformation_ref=f"{c}_logicle",
+                    range_min=s.x0,
+                    range_max=s.x1,
                 )
-                for i, s in enumerate(res.xintervals)
-            ]
+            ],
         )
-        for g in gates:
-            g_strat.add_gate(g, ("root", "beads"))
+        for i, s in enumerate(ints)
+    ]
+    for g in gates:
+        g_strat.add_gate(g, ("root", "beads"))
     return g_strat, smp, mask, GatingStrategyDebug(fcs_path.name, gate_results)
 
 
