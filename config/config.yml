@@ -1,6 +1,6 @@
 min_events:
   sop1: 8000
-  sop2: 5000
+  sop2: 3000
   sop3: 20000
 
 detector_limits:
