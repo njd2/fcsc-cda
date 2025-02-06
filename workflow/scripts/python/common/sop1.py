@@ -530,7 +530,7 @@ def build_gating_strategy(
             [
                 Dimension(
                     gate_color,
-                    transformation_ref=f"{c}_logicle",
+                    transformation_ref=f"{gate_color}_logicle",
                     range_min=s.x0,
                     range_max=s.x1,
                 )
