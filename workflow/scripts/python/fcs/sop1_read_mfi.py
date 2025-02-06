@@ -12,8 +12,8 @@ class MFIResult(NamedTuple):
     gcolor: s1.Color
     peak_index: int
     bead_count: int
+    pop_count: int
     raw_mfi: float
-    xform_mfi: float
 
 
 class Meta(NamedTuple):
@@ -36,9 +36,6 @@ def read_mfi(m: Meta) -> Line:
     df_raw = fcs.events
     s = Sample(df_raw, sample_id=str(m.fcs_path.name))
     res = gstrat.gate_sample(s)
-    trans = {c: gstrat.get_transform(f"{c}_logicle") for c in s1.COLORS}
-    s.apply_transform(trans)
-    df_x = s.as_dataframe(source="xform")
 
     def go(gate_name: str) -> MFIResult:
         s = gate_name.split("_")
@@ -46,8 +43,7 @@ def read_mfi(m: Meta) -> Line:
         i = int(s[1])
         mask = res.get_gate_membership(gate_name)
         raw_mfi = df_raw[mask][gcolor].median()
-        x_mfi = df_x[mask][gcolor].median()
-        return MFIResult(gcolor, i, mask.sum(), raw_mfi, x_mfi)
+        return MFIResult(gcolor, i, mask.size, mask.sum(), raw_mfi)
 
     if color is None:
         # rainbow beads: there should only be one color channel
@@ -65,9 +61,9 @@ def read_mfi(m: Meta) -> Line:
                 MFIResult(
                     c,
                     i + 7 - max_index,
+                    mask.size,
                     mask.sum(),
                     df_raw[mask][c].median(),
-                    df_x[mask][c].median(),
                 )
                 for c in s1.COLORS
                 for i, mask in masks.items()
