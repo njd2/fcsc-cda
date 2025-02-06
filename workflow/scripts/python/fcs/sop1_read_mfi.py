@@ -36,6 +36,7 @@ def read_mfi(m: Meta) -> Line:
     df_raw = fcs.events
     s = Sample(df_raw, sample_id=str(m.fcs_path.name))
     res = gstrat.gate_sample(s)
+    bead_count = res.get_gate_membership("beads").sum()
 
     def go(gate_name: str) -> MFIResult:
         s = gate_name.split("_")
@@ -43,7 +44,7 @@ def read_mfi(m: Meta) -> Line:
         i = int(s[1])
         mask = res.get_gate_membership(gate_name)
         raw_mfi = df_raw[mask][gcolor].median()
-        return MFIResult(gcolor, i, mask.size, mask.sum(), raw_mfi)
+        return MFIResult(gcolor, i, bead_count, mask.sum(), raw_mfi)
 
     if color is None:
         # rainbow beads: there should only be one color channel
@@ -61,7 +62,7 @@ def read_mfi(m: Meta) -> Line:
                 MFIResult(
                     c,
                     i + 7 - max_index,
-                    mask.size,
+                    bead_count,
                     mask.sum(),
                     df_raw[mask][c].median(),
                 )
