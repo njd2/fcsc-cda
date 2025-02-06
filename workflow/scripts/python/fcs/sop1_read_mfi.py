@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import Any, NamedTuple
 from flowkit import parse_gating_xml, Sample  # type: ignore
 from common.io import read_fcs
+from common.functional import partition
 import common.sop1 as s1
 from multiprocessing import Pool
 
 
 class MFIResult(NamedTuple):
-    gcolor: s1.Color
+    std_name: s1.Color
     peak_index: int
     bead_count: int
     pop_count: int
@@ -40,11 +41,11 @@ def read_mfi(m: Meta) -> Line:
 
     def go(gate_name: str) -> MFIResult:
         s = gate_name.split("_")
-        gcolor = s1.Color(s[0])
+        std_name = s1.Color(s[0])
         i = int(s[1])
         mask = res.get_gate_membership(gate_name)
-        raw_mfi = df_raw[mask][gcolor].median()
-        return MFIResult(gcolor, i, bead_count, mask.sum(), raw_mfi)
+        raw_mfi = df_raw[mask][std_name].median()
+        return MFIResult(std_name, i, bead_count, mask.sum(), raw_mfi)
 
     if color is None:
         # rainbow beads: there should only be one color channel
@@ -77,33 +78,52 @@ def read_mfi(m: Meta) -> Line:
 
 
 def main(smk: Any) -> None:
-    files_path = Path(smk.input[0])
+    files_path = Path(smk.input["files"])
+    erf_path = Path(smk.input["erf"])
     fc_out = Path(smk.output["fc"])
     rainbow_out = Path(smk.output["rainbow"])
+    cal_out = Path(smk.output["cal"])
 
-    df = pd.read_table(files_path)
+    df_files = pd.read_table(files_path)
+    df_erf = (pd.read_table(erf_path).set_index(["om", "std_name"])).drop(
+        columns=["channel"]
+    )
 
     runs = [
         Meta(int(file_index), (p := Path(fcs)), Path(gates), s1.path_to_om(p))
-        for file_index, fcs, gates in df.itertuples(index=False)
+        for file_index, fcs, gates in df_files.itertuples(index=False)
     ]
 
     with Pool(smk.threads) as pl:
         results = pl.map(read_mfi, runs)
 
-    with open(fc_out, "wt") as fo, open(rainbow_out, "wt") as ro:
-        fw = csv.writer(fo, delimiter="\t")
-        rw = csv.writer(ro, delimiter="\t")
+    rs, fs = partition(lambda x: x.israinbow, results)
+
+    def to_df(xs: list[Line]) -> pd.DataFrame:
         header = [*Meta._fields, *MFIResult._fields]
-        fw.writerow(header)
-        rw.writerow(header)
-        for x in results:
-            for m in x.mfis:
-                row = [*x.meta, *m]
-                if x.israinbow:
-                    rw.writerow(row)
-                else:
-                    fw.writerow(row)
+        return pd.DataFrame(
+            [(*x.meta, *m) for x in xs for m in x.mfis],
+            columns=header,
+        )
+
+    df_fc = to_df(fs)
+    df_rainbow = to_df(rs)
+
+    df_cal = df_fc.pivot(
+        index=["om", "std_name"],
+        columns=["peak_index"],
+        values=["raw_mfi"],
+    )
+
+    df_cal.columns = pd.Index(["p0", "p1"])
+    df_cal = df_cal.join(df_erf, on=["om", "std_name"]).reset_index()
+    df_cal["slope"] = df_cal["erf"] / (df_cal["p1"] - df_cal["p0"])
+    # anything with only one peak will be NaN for slope
+    df_cal = df_cal.dropna(subset=["slope"])
+
+    df_fc.to_csv(fc_out, sep="\t", index=False)
+    df_rainbow.to_csv(rainbow_out, sep="\t", index=False)
+    df_cal.to_csv(cal_out, sep="\t", index=False)
 
 
 main(snakemake)  # type: ignore

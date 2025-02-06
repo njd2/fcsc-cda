@@ -276,15 +276,30 @@ rule sop1_generate_gates:
 
 rule sop1_read_mfi:
     input:
-        rules.sop1_generate_gates.output[0],
+        files=rules.sop1_generate_gates.output[0],
+        erf="static/erf.tsv",
     output:
         fc=res_int_sop1 / "fcs_beads.tsv",
         rainbow=res_int_sop1 / "rainbow_beads.tsv",
+        cal=res_int_sop1 / "calibrations.tsv",
     threads: 20
     conda:
         "envs/fcs.yml"
     script:
         "scripts/python/fcs/sop1_read_mfi.py"
+
+
+rule sop1_make_summary:
+    input:
+        fc=rules.sop1_read_mfi.output.fc,
+        rainbow=rules.sop1_read_mfi.output.rainbow,
+        cal=rules.sop1_read_mfi.output.cal,
+    output:
+        res_final_summary / "sop1_summary.html",
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/Rmd/sop1_make_summary.Rmd"
 
 
 rule all:
@@ -294,5 +309,5 @@ rule all:
         rules.read_standardized_fcs_meta.output,
         # rules.compute_channel_entropies.output,
         rules.gate_time_channel.output,
-        rules.sop1_read_mfi.output,
+        rules.sop1_make_summary.output,
         # rules.compute_power_spectra.output,

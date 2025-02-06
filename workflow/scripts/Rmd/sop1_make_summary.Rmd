@@ -1,0 +1,158 @@
+---
+title: "SOP-1 Summary: ERF Calibration"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+
+## TODO make names "nicer" for people who don't think in code
+
+knitr::opts_chunk$set(fig.width=13, fig.height=7, fig_caption=TRUE)
+
+df_cal <- read_tsv(
+  snakemake@input[["cal"]],
+  col_types = cols(
+    om = "c",
+    std_name = "c",
+    slope = "d"
+  )
+)
+
+df_fc <- read_tsv(
+  snakemake@input[["fc"]],
+  col_types = cols(
+    om = "c",
+    std_name = "c",
+    peak_index = "i",
+    raw_mfi = "d",
+    pop_count = "d",
+    bead_count = "d"
+  )
+)
+
+df_rainbow <- read_tsv(
+  snakemake@input[["rainbow"]],
+  col_types = cols(
+    om = "c",
+    std_name = "c",
+    peak_index = "i",
+    raw_mfi = "d",
+    pop_count = "d",
+    bead_count = "d"
+  )
+)
+
+df_std <- df_rainbow %>%
+  left_join(df_cal, by = c("om", "std_name")) %>%
+  filter(!is.na(slope)) %>%
+  mutate(cal_mfi = slope * raw_mfi)
+
+df_lmod <- df_std %>%
+  filter(peak_index > 0) %>%
+  select(om, std_name, peak_index, cal_mfi) %>%
+  mutate(cal_mfi = log10(cal_mfi)) %>%
+  nest(data = c(peak_index, cal_mfi)) %>%
+  mutate(
+    lmod = map(data, ~ lm(cal_mfi ~ peak_index, .x)),
+    intercept = map_dbl(lmod, ~ coefficients(.x)[[1]]),
+    slope = map_dbl(lmod, ~ coefficients(.x)[[2]]),
+    r2 = map_dbl(lmod, ~ summary(.x)$r.squared)
+  ) %>%
+  select(-data, -lmod)
+```
+
+# Population fractions
+
+## FC Peaks
+
+```{r, echo = FALSE, results = "asis"}
+df_fc %>%
+  mutate(peak_name = if_else(peak_index == 0, "negative", "positive")) %>%
+  mutate(frac = pop_count / bead_count) %>%
+  ggplot(aes(x = frac, y = fct_rev(om), fill = peak_name)) +
+  geom_col() +
+  facet_wrap(c("std_name"), nrow = 1) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(x = "Percent of beads", y = NULL, fill = "Peak")
+```
+
+## Rainbow Peaks
+
+```{r, echo = FALSE, results = "asis"}
+df_rainbow %>%
+  mutate(frac = pop_count / bead_count) %>%
+  ggplot(aes(x = frac, y = fct_rev(om), fill = factor(peak_index))) +
+  geom_col() +
+  facet_wrap(c("std_name"), nrow = 1) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(x = "Percent of beads", y = NULL, fill = "Peak")
+```
+
+# Peak counts
+
+## FC Beads
+
+```{r, echo = FALSE, results = "asis"}
+df_fc %>%
+  ggplot(aes(y = fct_rev(om))) +
+  geom_bar() +
+  facet_wrap(c("std_name"), nrow = 1) +
+  labs(x = "Number of peaks", y = NULL)
+```
+
+## Rainbow Beads
+
+```{r, echo = FALSE, results = "asis"}
+df_rainbow %>%
+  ggplot(aes(y = fct_rev(om))) +
+  geom_bar() +
+  facet_wrap(c("std_name"), nrow = 1) +
+  labs(x = "Number of peaks", y = NULL)
+```
+
+# Calibration results
+
+## Raw values
+
+```{r, echo = FALSE, results = "asis", fig.height = 12}
+df_std %>%
+  filter(cal_mfi > 0) %>%
+  ggplot(aes(peak_index, cal_mfi, color = om)) +
+  geom_point() +
+  facet_wrap(c("std_name"), scales = "free_y") +
+  scale_y_log10() +
+  labs(x = "Peak Index", y = "ERFs", color = "Org/Machine") +
+  theme(legend.position="bottom")
+```
+
+## Fitted Results
+
+### Slopes
+
+```{r, echo = FALSE, results = "asis"}
+df_lmod %>%
+  ggplot(aes(slope, std_name, color = om)) +
+  geom_jitter(height = 0.1) +
+  labs(x = "Slope (log10(ERF)/bead index)", y = NULL, color = "Org/Machine")
+```
+
+### Intercepts
+
+```{r, echo = FALSE, results = "asis"}
+df_lmod %>%
+  ggplot(aes(intercept, std_name, color = om)) +
+  geom_jitter(height = 0.1) +
+  labs(x = "Intercept (log10(ERF))", y = NULL, color = "Org/Machine")
+```
+
+### R-squared's
+
+```{r, echo = FALSE, results = "asis"}
+df_lmod %>%
+  ggplot(aes(r2, std_name, color = om)) +
+  geom_jitter(height = 0.1) +
+  labs(x = "R^2", y = NULL, color = "Org/Machine")
+```
