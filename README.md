@@ -93,6 +93,10 @@ environment built from above):
 Substitute `<cores>` with the number of CPU cores on your machine you wish to
 sacrifice to the cause.
 
+## Running on a cluster
+
+TODO
+
 ## Output files
 
 The layout of output files is still in flux and could change drastically in
