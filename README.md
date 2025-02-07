@@ -64,7 +64,7 @@ conda activate fcsc-cda
 The pipeline is implemented in `snakemake` which will allow the runtime to scale
 to large compute clusters if the need arises. For now, the pipeline can run on a
 reasonably fast computer (13th+ Gen Intel i7 with 16-20 cores) in a few minutes
-on all WG2 files. Most steps are heavily multitheaded so having many cores will
+on all WG2 files. Most steps are heavily multithreaded so having many cores will
 increase performance proportionately.
 
 ## Obtaining input files
