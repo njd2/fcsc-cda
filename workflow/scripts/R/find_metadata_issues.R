@@ -36,7 +36,7 @@ df_combos <- read_tsv(
         eid == 4 ~ "SOP 2: Matrix 3/4"
       ),
       sop == 3 ~ case_when(
-        str_detect(material, "fmo") ~ "SOP 3 - Test FMO",
+        str_detect(material, "fmo") ~ "SOP 3: Test FMO",
         eid == 1 ~ "SOP 3: Test Pheno",
         eid == 2 ~ "SOP 3: Test Count",
         eid == 3 ~ "SOP 3: QC Count",
@@ -240,9 +240,12 @@ df_issues <- df_combos %>%
   group_by(org, machine) %>%
   mutate(
     has_incomplete_set = sum(missing_file & required) > 0 |
-      ## sum(has_voltage_variation & required) > 0 |
-      ## sum(has_gain_variation & required) > 0 |
-      sum(has_insufficient_events & required) > 0
+      sum(has_insufficient_events & required) > 0 |
+      sum(missing_colors & required) > 0 |
+      sum(missing_time & required) > 0 |
+      sum(missing_scatter_area & required) > 0 |
+      sum(missing_scatter_height & required) > 0 |
+      sum(has_manual_exclusion & required) > 0
   ) %>%
   ungroup() %>%
   select(

@@ -72,7 +72,19 @@ df_meta_issues <- read_tsv(
     has_incomplete_set = "l",
     .default = "-"
   )
-)
+) %>%
+  mutate(
+    group = fct_relevel(
+      group,
+      "SOP 3: Test Pheno",
+      "SOP 3: Test Count",
+      "SOP 3: Test FMO",
+      "SOP 3: QC Pheno",
+      "SOP 3: QC Count",
+      after = 10
+    )
+  ) %>%
+  mutate(om = fct_rev(om))
 
 make_plot <- function(df_gates, key, both) {
   i <- key$file_index[[1]]
