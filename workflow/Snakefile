@@ -70,7 +70,7 @@ rule read_fcs_meta:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/read_metadata.py"
+        "scripts/python/fcs/standardization/read_metadata.py"
 
 
 rule generate_exclusions:
@@ -83,7 +83,7 @@ rule generate_exclusions:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/generate_exclusions.py"
+        "scripts/python/fcs/standardization/generate_exclusions.py"
 
 
 rule find_metadata_issues:
@@ -116,7 +116,7 @@ rule standardize_fcs:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/standardize_fcs.py"
+        "scripts/python/fcs/standardization/standardize_fcs.py"
 
 
 rule remove_edge_events:
@@ -131,7 +131,7 @@ rule remove_edge_events:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/remove_edge_events.py"
+        "scripts/python/fcs/standardization/remove_edge_events.py"
 
 
 rule read_standardized_fcs_meta:
@@ -145,7 +145,7 @@ rule read_standardized_fcs_meta:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/read_metadata.py"
+        "scripts/python/fcs/standardization/read_metadata.py"
 
 
 rule summarize_metadata_errors:
@@ -188,7 +188,7 @@ rule find_time_issues:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/find_time_issues.py"
+        "scripts/python/fcs/time_channel/find_time_issues.py"
 
 
 rule summarize_time_errors:
@@ -215,7 +215,7 @@ rule gate_time_channel:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/gate_time_channel.py"
+        "scripts/python/fcs/time_channel/gate_time_channel.py"
 
 
 # rule compute_channel_entropies:
@@ -230,7 +230,7 @@ rule gate_time_channel:
 #     conda:
 #         "envs/fcs.yml"
 #     script:
-#         "scripts/python/fcs/compute_perm_entropy.py"
+#         "scripts/python/fcs/time_channel/compute_perm_entropy.py"
 
 
 # rule compute_power_spectra:
@@ -245,7 +245,7 @@ rule gate_time_channel:
 #     conda:
 #         "envs/fcs.yml"
 #     script:
-#         "scripts/python/fcs/compute_power_spectra.py"
+#         "scripts/python/fcs/time_channel/compute_power_spectra.py"
 
 
 ################################################################################
@@ -271,7 +271,7 @@ rule sop1_generate_gates:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/sop1_generate_gates.py"
+        "scripts/python/fcs/sop1/generate_gates.py"
 
 
 rule sop1_read_mfi:
@@ -286,7 +286,7 @@ rule sop1_read_mfi:
     conda:
         "envs/fcs.yml"
     script:
-        "scripts/python/fcs/sop1_read_mfi.py"
+        "scripts/python/fcs/sop1/read_mfi.py"
 
 
 rule sop1_make_summary:
@@ -306,8 +306,6 @@ rule all:
     input:
         rules.summarize_metadata_errors.output,
         rules.summarize_time_errors.output,
-        rules.read_standardized_fcs_meta.output,
-        # rules.compute_channel_entropies.output,
-        rules.gate_time_channel.output,
         rules.sop1_make_summary.output,
         # rules.compute_power_spectra.output,
+        # rules.compute_channel_entropies.output,
