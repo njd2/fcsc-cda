@@ -47,7 +47,8 @@ df_combos <- read_tsv(
   # Matrix 2/3 and the cryoPBMC test panels are required for the dataset to
   # be considered "complete"
   mutate(
-    required = (sop == 2 & eid != 1) | (sop == 3 & eid == 1)
+    required = (sop == 2 & eid != 1) |
+      (sop == 3 & eid == 1 & !str_detect(material, "fmo"))
   )
 
 df_meta <- read_tsv(
