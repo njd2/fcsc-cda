@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from common.functional import fmap_maybe, from_maybe
 
+
 X = TypeVar("X")
 Y = TypeVar("Y")
 

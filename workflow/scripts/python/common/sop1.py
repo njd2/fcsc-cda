@@ -4,27 +4,30 @@ import os
 import pandas as pd
 import numpy as np
 import numpy.typing as npt
-from itertools import combinations
+from itertools import combinations, groupby
 from pathlib import Path
 from functools import reduce
 import flowkit as fk  # type: ignore
 from flowkit import Dimension, Sample, GatingStrategy
 from flowkit._models.gates import RectangleGate  # type: ignore
 from flowkit._models.transforms import LogicleTransform  # type: ignore
-from typing import Any, NamedTuple, NewType
+from typing import Any, NamedTuple
 from scipy.stats import gaussian_kde  # type: ignore
 from scipy.stats.mstats import mquantiles  # type: ignore
 from scipy.integrate import trapezoid  # type: ignore
 from multiprocessing import Pool
 from common.io import read_fcs
+from common.metadata import (
+    OM,
+    Color,
+    read_files,
+    CalibrationMeta,
+    IndexedPath,
+    FileIndex,
+    split_path,
+)
 from common.functional import fmap_maybe, from_maybe, span, partition
 
-OM = NewType("OM", str)
-Color = NewType("Color", str)
-FileIndex = NewType("FileIndex", int)
-
-
-RAINBOW_PAT = "RCP-30"
 
 # TODO need to deal with these things... :/
 NO_SCATTER = [
@@ -33,35 +36,13 @@ NO_SCATTER = [
     OM("LMNXSEA_ImageStreamX-1"),
 ]
 
-COLORS = [*map(Color, ["v450", "v500", "fitc", "pc55", "pe", "pc7", "apc", "ac7"])]
-
-FILE_ORDER = [
-    f"FC-{x}_SOP"
-    for x in [
-        "V450",
-        "V500-C",
-        "FITC",
-        "PerCP-Cy5.5",
-        "PE",
-        "PE-Cy7",
-        "APC",
-        "APC-Cy7",
-    ]
-]
-
-COLOR_MAP = dict(zip(FILE_ORDER, COLORS))
 
 LogicleM = 4.5
 
 
-class FCSFile(NamedTuple):
-    file_index: FileIndex
-    path: Path
-
-
-FileMap = dict[OM, list[FCSFile]]
+FileMap = dict[OM, list[IndexedPath]]
 RangeMap = dict[FileIndex, dict[Color, int]]
-FileRangeMap = dict[OM, dict[FCSFile, dict[Color, int]]]
+FileRangeMap = dict[OM, dict[IndexedPath, dict[Color, int]]]
 V_F32 = npt.NDArray[np.float32]
 
 
@@ -209,14 +190,10 @@ DEF_SC = SampleConfig(
 )
 
 
-# TODO these seem more general
 def path_to_color(p: Path) -> Color | None:
-    return next((v for k, v in COLOR_MAP.items() if k in p.name), None)
-
-
-def path_to_om(p: Path) -> OM:
-    s = p.name.split("_")
-    return OM(f"{s[2]}_{s[3]}")
+    x = split_path(p).projection
+    assert isinstance(x, CalibrationMeta)
+    return x.color
 
 
 def find_differential_peaks(x: V_F32, ddy: V_F32, is_peak: bool) -> list[D1Root]:
@@ -474,7 +451,7 @@ def build_gating_strategy(
     # for formulas/rationale for doing this).
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
     trans = {}
-    for c in COLORS:
+    for c in Color:
         arr = df_beads[c].values
         arr_neg = arr[arr < 0]
         maxrange = float(color_ranges[c])
@@ -506,7 +483,7 @@ def build_gating_strategy(
         # rainbow beads
         rs = [
             (c, make_min_density_serial_gates(sc.rainbow, df_beads_x[c].values, 8))
-            for c in COLORS
+            for c in Color
         ]
         # return all results in case we want to debug them...
         gate_results = dict(rs)
@@ -545,23 +522,40 @@ def build_gating_strategy(
 
 def read_path_map(files: Path) -> FileMap:
     """Read a tsv like "index, filepath" and return paths for SOP 1."""
-    df = pd.read_table(files, names=["file_index", "file_path"])
-    acc: FileMap = {}
-    for file_index, file_path in df.itertuples(index=False):
-        p = Path(file_path)
-        xs = p.name.split("_")
-        om = OM(f"{xs[2]}_{xs[3]}")
-        if xs[5] == "SOP-01" and om not in NO_SCATTER:
-            if om not in acc:
-                acc[om] = []
-            acc[om] += [FCSFile(FileIndex(int(file_index)), p)]
-    for k in acc:
-        acc[k].sort(
-            key=lambda x: next(
-                (i for i, o in enumerate(FILE_ORDER) if o in x.path.name), -1
-            ),
-        )
-    return acc
+    fs = read_files(files)
+    calibrations = [
+        (f.indexed_path, f.filemeta)
+        for f in fs
+        if f.filemeta.machine.om not in NO_SCATTER
+        and isinstance(f.filemeta, CalibrationMeta)
+    ]
+    return {
+        om: [
+            x[0]
+            for x in sorted(
+                gs, key=lambda x: 9 if (c := x[1].color) is None else c.index
+            )
+        ]
+        for om, gs in groupby(calibrations, lambda c: c[1].machine.om)
+    }
+
+    # df = pd.read_table(files, names=["file_index", "file_path"])
+    # acc: FileMap = {}
+    # for file_index, file_path in df.itertuples(index=False):
+    #     p = Path(file_path)
+    #     xs = p.name.split("_")
+    #     om = OM(f"{xs[2]}_{xs[3]}")
+    #     if xs[5] == "SOP-01" and om not in NO_SCATTER:
+    #         if om not in acc:
+    #             acc[om] = []
+    #         acc[om] += [FCSFile(FileIndex(int(file_index)), p)]
+    # for k in acc:
+    #     acc[k].sort(
+    #         key=lambda x: next(
+    #             (i for i, o in enumerate(FILE_ORDER) if o in x.path.name), -1
+    #         ),
+    #     )
+    # return acc
 
 
 def read_range_map(params: Path) -> RangeMap:
@@ -572,7 +566,7 @@ def read_range_map(params: Path) -> RangeMap:
     acc: RangeMap = {}
     for file_index, maxrange, shortname in df.itertuples(index=False):
         color = Color(shortname)
-        if color in COLORS:
+        if color in Color:
             p = FileIndex(int(file_index))
             if p not in acc:
                 acc[p] = {}
@@ -612,7 +606,7 @@ def df_to_colormap(om: str, df: pd.DataFrame) -> dict[Color | None, GateBoundari
 
     specific_colors = dict([p for p in pairs if p[0] not in ["all", "rainbow"]])
 
-    if not all([p in COLORS for p in specific_colors]):
+    if not all([p in Color for p in specific_colors]):
         raise ValueError(f"invalid colors for {om}")
     if all_range is None and len(specific_colors) != 8:
         raise ValueError(f"not all colors specified for {om}")
@@ -620,7 +614,7 @@ def df_to_colormap(om: str, df: pd.DataFrame) -> dict[Color | None, GateBoundari
     if all_range is None:
         color_pairs = specific_colors
     else:
-        xs = dict([(c, all_range) for c in COLORS if c not in specific_colors])
+        xs = dict([(c, all_range) for c in Color if c not in specific_colors])
         color_pairs = {**xs, **specific_colors}
 
     return {**color_pairs, None: rainbow_range}
@@ -638,18 +632,18 @@ class GateRun(NamedTuple):
     om: OM
     boundaries: Path
     color_ranges: dict[Color, int]
-    fcs: FCSFile
+    fcs: IndexedPath
     out: Path | None
 
 
-def write_gate_inner(r: GateRun) -> tuple[FCSFile, Path | None]:
+def write_gate_inner(r: GateRun) -> tuple[IndexedPath, Path | None]:
     all_gs = read_gate_ranges(r.boundaries)
-    color = path_to_color(r.fcs.path)
+    color = path_to_color(r.fcs.filepath)
     gs, _, _, _ = build_gating_strategy(
         r.sc,
         all_gs[r.om][color],
         r.color_ranges,
-        r.fcs.path,
+        r.fcs.filepath,
         False,
     )
     if r.out is not None:
@@ -667,9 +661,9 @@ def write_gate(
     om: OM,
     boundaries: Path,
     params: Path,
-    fcs: FCSFile,
+    fcs: IndexedPath,
     out: Path | None,
-) -> tuple[FCSFile, Path | None]:
+) -> tuple[IndexedPath, Path | None]:
     range_map = read_range_map(params)
     color_ranges = range_map[fcs.file_index]
     return write_gate_inner(GateRun(sc, om, boundaries, color_ranges, fcs, out))
@@ -682,7 +676,7 @@ def write_all_gates(
     params: Path,
     out_dir: Path | None,
     threads: int | None = None,
-) -> list[tuple[FCSFile, Path | None]]:
+) -> list[tuple[IndexedPath, Path | None]]:
     def make_out_path(om: OM, p: Path) -> Path | None:
         color = from_maybe("rainbow", path_to_color(p))
         fn = f"{om}-{color}.xml"
@@ -700,7 +694,7 @@ def write_all_gates(
             boundaries,
             color_ranges,
             p,
-            make_out_path(om, p.path),
+            make_out_path(om, p.filepath),
         )
         for om, path_ranges in path_range_map.items()
         for p, color_ranges in path_ranges.items()
