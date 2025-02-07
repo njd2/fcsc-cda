@@ -221,6 +221,7 @@ df_multi_issues <- df_meta %>%
 df_issues <- df_combos %>%
   left_join(df_meta, by = c("org", "machine", "sop", "eid", "rep", "material")) %>%
   left_join(df_exclusions, by = c("org", "machine", "sop", "eid", "rep", "material")) %>%
+  left_join(df_height_required, by = "file_index") %>%
   mutate(
     missing_file = is.na(file_index),
     min_events = case_when(
@@ -246,11 +247,11 @@ df_issues <- df_combos %>%
   ungroup() %>%
   select(
     file_index, org, machine, material, sop, eid, rep, om, group, filepath,
-    percent_complete, missing_file, has_voltage_variation, has_gain_variation,
-    has_insufficient_events, has_multi_serial, has_multi_cytometer,
-    has_multi_system, missing_time, missing_colors, missing_scatter_area,
-    missing_scatter_height, has_incomplete_set, has_manual_exclusion,
-    exclusion_comment
+    percent_complete, height_required, missing_file, has_voltage_variation,
+    has_gain_variation, has_insufficient_events, has_multi_serial,
+    has_multi_cytometer, has_multi_system, missing_time, missing_colors,
+    missing_scatter_area, missing_scatter_height, has_incomplete_set,
+    has_manual_exclusion, exclusion_comment
   ) %>%
   arrange(file_index)
 

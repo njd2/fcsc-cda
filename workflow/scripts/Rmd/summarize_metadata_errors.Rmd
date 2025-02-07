@@ -75,9 +75,10 @@ df_all_issues <- df_meta_issues %>%
     channel_error = case_when(
       missing_time ~ "1 missing time channel" ,
       missing_scatter_area ~ "2 missing scatter area",
-      missing_colors ~ "3 missing color channel",
-      fatal_metadata_error != "no fatal metadata error" ~ "4 previous error",
-      TRUE ~ "5 no channel error"
+      missing_scatter_height ~ "3 missing scatter height",
+      missing_colors ~ "4 missing color channel",
+      fatal_metadata_error != "no fatal metadata error" ~ "5 previous error",
+      TRUE ~ "6 no channel error"
     ) %>%
       fct_relabel(~ str_sub(.x, 3)),
     fatal_metadata_alpha = if_else(fatal_metadata_error == "no fatal metadata error", 0.5, 1),

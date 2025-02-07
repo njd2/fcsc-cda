@@ -196,7 +196,14 @@ def get_anomaly_gates(
         starts: list[int] = [0, *anomaly_positions]
         ends: list[int] = [*[x - 1 for x in anomaly_positions], total - 1]
         codes = [*anomalies[mask].tolist(), 0]
-        return [AnomalyGate(s, e, n, t, c) for s, e, c in zip(starts, ends, codes)]
+        # Remove gates where start and end are the same, since these should
+        # only arise when two anomalies are next to each other with no valid
+        # datapoints in between.
+        return [
+            AnomalyGate(s, e, n, t, c)
+            for s, e, c in zip(starts, ends, codes)
+            if not s == e
+        ]
 
 
 def ss(xs: TimeValues) -> float:
@@ -264,8 +271,8 @@ def get_flat_gates(
     n: MinEvents,
 ) -> list[FlatGate]:
     # NOTE add 1 since the first diff value for this gate is not differentiable
-    gates = find_flat(p, [], ag.event.x0 + 1, ag.event.x1, tdiff)
-    if len(gates) == 0 or not ag.valid:
+    gates = find_flat(p, [], ag.event.x0 + 1, ag.event.x1, tdiff) if ag.valid else []
+    if len(gates) == 0:
         return [FlatGate(ag.event.x0, ag.event.x1, n, t, ag.anomaly, False)]
     else:
         starts = [ag.event.x0, *gates]

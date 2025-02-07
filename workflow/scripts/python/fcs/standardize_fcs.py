@@ -64,7 +64,7 @@ class RunConfig(NamedTuple):
     opath: Path
     sop: int
     eid: int
-    missing_scatter_height: bool
+    height_required: bool
     channel_map: PreChannelMap
 
 
@@ -106,16 +106,16 @@ def format_parameters(
 
 def standardize_fcs(c: RunConfig) -> None:
     def go(p: ParsedEvents) -> WritableFCS:
-        # remove height channels if this file used beads, or if they are missing
-        # from the FCS file (since this isn't fatal)
-        if c.sop == 1 or c.sop == 2 and c.eid != 1 or c.missing_scatter_height:
-            pm = {
+        # remove height channels if it isn't required
+        pm = (
+            c.channel_map
+            if c.height_required
+            else {
                 k: v
                 for k, v in c.channel_map.items()
                 if v.short not in ["ssc_h", "fsc_h"]
             }
-        else:
-            pm = c.channel_map
+        )
         m = {k: v.add_index(i + 1) for i, (k, v) in enumerate(pm.items())}
         new_df = p.events[[*m]]
         new_params = format_parameters(p.meta.params, m, 32)
@@ -171,7 +171,7 @@ def main(smk: Any) -> None:
         "sop",
         "eid",
         "filepath",
-        "missing_scatter_height",
+        "height_required",
     ]
 
     # Skip files for which the channel definitions are not complete. We also
@@ -180,13 +180,13 @@ def main(smk: Any) -> None:
     # complex logic compared to this dumb filter.
     ISSUE_COLUMNS = [
         "missing_file",
-        "has_voltage_variation",
-        "has_gain_variation",
         "has_insufficient_events",
         "missing_time",
         "missing_colors",
         "missing_scatter_area",
+        "missing_scatter_height",
         "has_incomplete_set",
+        "has_manual_exclusion",
     ]
 
     df = pd.read_table(meta_in).set_index("file_index")
@@ -201,10 +201,10 @@ def main(smk: Any) -> None:
             out_dir / fp.name,
             int(sop),
             int(eid),
-            mi_sc_hght,
+            hgt_req,
             om_channel_map[org, machine],
         )
-        for i, org, machine, sop, eid, filepath, mi_sc_hght in df.itertuples(index=True)
+        for i, org, machine, sop, eid, filepath, hgt_req in df.itertuples(index=True)
     ]
 
     with Pool(smk.threads) as p:
