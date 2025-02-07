@@ -176,6 +176,12 @@ df_allowed_missing_scatter <- df_channels %>%
   unique() %>%
   add_column(scatter_can_be_missing = TRUE)
 
+df_height_required <- df_meta %>%
+  # require height scatter channels if the events are cells, since height is
+  # needed for doublet exclusion
+  mutate(height_required = str_detect(material, "PBMC|lyoLeuk")) %>%
+  select(file_index, height_required)
+
 df_file_channels <- df_params_std %>%
   pivot_wider(
     id_cols = c(file_index, org, machine),
@@ -185,11 +191,15 @@ df_file_channels <- df_params_std %>%
   right_join(select(df_meta, file_index), by = "file_index") %>%
   left_join(df_allowed_missing_scatter, by = c("org", "machine")) %>%
   replace_na(list(scatter_can_be_missing = FALSE)) %>%
+  left_join(df_height_required, by = "file_index") %>%
   mutate(
     missing_time = is.na(time),
     missing_colors = if_any(c(v450, v500, fitc, pc55, pe, pc7, apc, ac7), is.na),
-    missing_scatter_area = if_any(c(fsc_a, ssc_a), is.na) & !scatter_can_be_missing,
-    missing_scatter_height = if_any(c(fsc_h, ssc_h), is.na) & !scatter_can_be_missing
+    missing_scatter_area = if_any(c(fsc_a, ssc_a), is.na) &
+      !scatter_can_be_missing,
+    missing_scatter_height = if_any(c(fsc_h, ssc_h), is.na) &
+      !scatter_can_be_missing &
+      height_required
   )
 
 df_file_channels %>%
