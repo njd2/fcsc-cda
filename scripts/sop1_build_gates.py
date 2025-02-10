@@ -11,15 +11,16 @@ from bokeh.plotting import show, output_file
 from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
 from common.functional import fmap_maybe, unzip2
+from common.metadata import Color, OM
 import common.sop1 as s1
 
 
 def apply_gates_to_sample(
     sc: s1.SampleConfig,
     gs: s1.GateBoundaries,
-    color_ranges: dict[s1.Color, int],
+    color_ranges: dict[Color, int],
     fcs_path: Path,
-    colors: list[s1.Color],
+    colors: list[Color],
     scatteronly: bool,
 ) -> tuple[Any, s1.GatingStrategyDebug]:
     g_strat, smp, bead_mask, res = s1.build_gating_strategy(
@@ -42,12 +43,12 @@ def apply_gates_to_sample(
     if scatteronly:
         return row(p0), res
 
-    color_gates: dict[s1.Color, list[tuple[float, float]]] = {}
+    color_gates: dict[Color, list[tuple[float, float]]] = {}
     for gname, gpath in g_strat.get_child_gate_ids("beads", ("root",)):
         g = g_strat.get_gate(gname, gpath)
         # ASSUME each gate is a rectangle gate with one dimension
         color = g.get_dimension_ids()[0]
-        _color = s1.Color(color)
+        _color = Color(color)
         dim = g.get_dimension(color)
         if _color not in color_gates:
             color_gates[_color] = []
@@ -57,7 +58,7 @@ def apply_gates_to_sample(
     smp_colors = Sample(df_beads_x, sample_id=str(fcs_path.name))
     ps = []
     for c in colors:
-        p = smp_colors.plot_histogram(c, source="raw", x_range=(-0.2, 1))
+        p = smp_colors.plot_histogram(c.value, source="raw", x_range=(-0.2, 1))
         if c in color_gates:
             p.vspan(x=[g[0] for g in color_gates[c]], color="#ff0000")
             p.vspan(
@@ -73,9 +74,9 @@ def make_plots(
     boundaries: Path,
     files: Path,
     params: Path,
-    om: s1.OM,
+    om: OM,
     rainbow: bool,
-    colors: list[s1.Color],
+    colors: list[Color],
     scatteronly: bool,
     debug: Path | bool,
 ) -> None:
@@ -87,14 +88,14 @@ def make_plots(
         [
             apply_gates_to_sample(
                 sc,
-                all_gs[om][s1.path_to_color(p.path)],
+                all_gs[om][s1.path_to_color(p.filepath)],
                 color_ranges,
-                p.path,
+                p.filepath,
                 colors,
                 scatteronly,
             )
             for p, color_ranges in paths.items()
-            if s1.RAINBOW_PAT not in p.path.name
+            if "RCP-30-5A" not in p.filepath.name
         ]
     )
 
@@ -108,12 +109,12 @@ def make_plots(
                 sc,
                 all_gs[om][None],
                 color_ranges,
-                p.path,
+                p.filepath,
                 colors,
                 scatteronly,
             )
             for p, color_ranges in paths.items()
-            if s1.RAINBOW_PAT in p.path.name
+            if "RCP-30-5A" in p.filepath.name
         ),
         (None, None),
     )
@@ -208,9 +209,9 @@ def main() -> None:
             Path(parsed.gates),
             Path(parsed.files),
             Path(parsed.params),
-            s1.OM(parsed.om),
+            OM(parsed.om),
             parsed.rainbow,
-            s1.COLORS if parsed.colors is None else parsed.colors.split(","),
+            [*Color] if parsed.colors is None else parsed.colors.split(","),
             parsed.scatteronly,
             parsed.debugpath,
         )

@@ -25,6 +25,14 @@ class Machine(NamedTuple):
     org: str
     machine: str
 
+    @classmethod
+    def tsv_header(cls) -> list[str]:
+        return ["org", "machine", "om"]
+
+    @property
+    def line(self) -> list[str]:
+        return [self.org, self.machine, self.om]
+
     @property
     def om(self) -> OM:
         return OM(f"{self.org}_{self.machine}")
@@ -202,6 +210,18 @@ class FCSPathMeta(NamedTuple):
     eid: int
     rep: Rep
 
+    @classmethod
+    def tsv_header(cls) -> list[str]:
+        return [*Machine.tsv_header(), *FCSPathMeta._fields[1:], "group"]
+
+    @property
+    def line(self) -> list[str]:
+        return [
+            *self.machine.line,
+            *[str(x) for x in self._asdict().values()][1:],
+            self.group,
+        ]
+
     @property
     def group(self) -> str:
         return format_group(self.sop, self.eid, self.material)
@@ -244,14 +264,14 @@ class FCSPathMeta(NamedTuple):
                 except KeyError:
                     m = re.match("panel1-cryoPBMC-([1-3])", self.material)
                     if m is not None and 1 <= self.rep <= 3:
-                        lot = Lot(int(m[0]))
+                        lot = Lot(int(m[1]))
                         return PhenoMeta(self.machine, lot, self.rep)
                     else:
                         raise ValueError(f"invalid SOP 3, EID 1: {self}")
             elif self.eid == 2:
                 m = re.match("AqLD-TruCount-CD45-AxPB-cryoPBMC-([1-3])", self.material)
                 if m is not None and 1 <= self.rep <= 3:
-                    lot = Lot(int(m[0]))
+                    lot = Lot(int(m[1]))
                     return CountMeta(self.machine, lot, self.rep)
                 else:
                     raise ValueError(f"invalid SOP 3, EID 2: {self}")
@@ -278,6 +298,14 @@ class IndexedPath(NamedTuple):
     file_index: FileIndex
     filepath: Path
 
+    @classmethod
+    def tsv_header(cls) -> list[str]:
+        return ["file_index", "filepath"]
+
+    @property
+    def line(self) -> list[str]:
+        return [str(self.file_index), str(self.filepath)]
+
 
 class FCSMeta(NamedTuple):
     indexed_path: IndexedPath
@@ -285,22 +313,11 @@ class FCSMeta(NamedTuple):
 
     @classmethod
     def tsv_header(cls) -> list[str]:
-        return ["file_path", *FCSPathMeta._fields, "filepath"]
+        return [*IndexedPath.tsv_header(), *FCSPathMeta.tsv_header()]
 
     @property
     def line(self) -> list[str]:
-        return [
-            str(self.indexed_path.file_index),
-            self.filemeta.machine.org,
-            self.filemeta.machine.machine,
-            self.filemeta.material,
-            str(self.filemeta.sop),
-            str(self.filemeta.eid),
-            str(self.filemeta.rep),
-            self.filemeta.group,
-            self.filemeta.machine.om,
-            str(self.indexed_path.filepath),
-        ]
+        return [*self.indexed_path.line, *self.filemeta.line]
 
 
 class SplitFCSMeta(NamedTuple):

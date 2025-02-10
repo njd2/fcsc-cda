@@ -11,7 +11,7 @@ import flowkit as fk  # type: ignore
 from flowkit import Dimension, Sample, GatingStrategy
 from flowkit._models.gates import RectangleGate  # type: ignore
 from flowkit._models.transforms import LogicleTransform  # type: ignore
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Generator
 from scipy.stats import gaussian_kde  # type: ignore
 from scipy.stats.mstats import mquantiles  # type: ignore
 from scipy.integrate import trapezoid  # type: ignore
@@ -78,19 +78,45 @@ class D1Root(NamedTuple):
 
 
 class ShapeTest(NamedTuple):
-    left_passing: bool
-    right_passing: bool
     xi: float
-    x05: float
     x25: float
     x75: float
-    x95: float
     xf: float
     dx: float
 
     @property
     def passing(self) -> bool:
         return self.right_passing and self.left_passing
+
+    @property
+    def left_passing(self) -> bool:
+        return self.xi <= self.x05
+
+    @property
+    def right_passing(self) -> bool:
+        return self.x95 < self.xf
+
+    @property
+    def x05(self) -> float:
+        return self.x25 - self.dx
+
+    @property
+    def x95(self) -> float:
+        return self.x75 + self.dx
+
+    @property
+    def json(self) -> dict[str, Any]:
+        return {
+            "left": self.left_passing,
+            "right": self.right_passing,
+            "xi": self.xi,
+            "x05": self.x05,
+            "x25": self.x25,
+            "x75": self.x75,
+            "x95": self.x95,
+            "xf": self.xf,
+            "dx": self.dx,
+        }
 
 
 class Interval(NamedTuple):
@@ -108,7 +134,7 @@ class TestInterval(NamedTuple):
         return {
             "interval": self.interval._asdict(),
             "area": self.area,
-            "shape": self.shape._asdict(),
+            "shape": self.shape.json,
         }
 
 
@@ -159,7 +185,7 @@ class SerialGateResult(NamedTuple):
 
 class GatingStrategyDebug(NamedTuple):
     filename: str
-    serial: dict[Color, SerialGateResult]
+    serial: dict[str, SerialGateResult]
 
     @property
     def json(self) -> dict[str, Any]:
@@ -241,18 +267,20 @@ def find_density_peaks(
     return (x, y, valleys)
 
 
-def slice_combinations(xs: list[Interval]) -> list[list[Interval]]:
-    n = len(xs) - 1
+def slice_combinations(xs: list[Interval]) -> Generator[list[Interval], None, None]:
+    N = len(xs)
+    n = N - 1
     if n < 0:
-        return []
-    slices = [
-        [c + 1 for c in cs] for i in range(n) for cs in combinations(range(n), i + 1)
-    ]
-    ys = [
-        [Interval(xs[x].a, xs[y - 1].b) for x, y in zip([0, *ss], [*ss, len(xs)])]
-        for ss in slices
-    ]
-    return [[Interval(xs[0].a, xs[-1].b)], *ys]
+        yield []
+    else:
+        _as = [x.a for x in xs]
+        _bs = [x.b for x in xs]
+        yield [Interval(_as[0], _bs[-1])]
+        for i in range(n):
+            for cs in combinations(range(n), i + 1):
+                ss = [c + 1 for c in cs]
+                xys = zip([0, *ss], [*ss, N])
+                yield [Interval(_as[x], _bs[y - 1]) for x, y in xys]
 
 
 def make_min_density_serial_gates(
@@ -278,6 +306,7 @@ def make_min_density_serial_gates(
         return select_data(i)[2].size == 0
 
     def compute_area(i: Interval) -> float:
+        float(trapezoid(y[i.a : i.b], x[i.a : i.b]))
         return float(trapezoid(y[i.a : i.b], x[i.a : i.b]))
 
     # Quantile test overview:
@@ -318,10 +347,7 @@ def make_min_density_serial_gates(
         res = mquantiles(e, (q1, q3))
         x25 = float(res[0])
         x75 = float(res[1])
-        dx = (x75 - x25) * f
-        x05 = x25 - dx
-        x95 = x75 + dx
-        return ShapeTest(xi <= x05, x95 < xf, xi, x05, x25, x75, x95, xf, dx)
+        return ShapeTest(xi, x25, x75, xf, (x75 - x25) * f)
 
     def find_merge_combination(xs: list[Interval]) -> list[TestInterval]:
         combos = [
@@ -452,17 +478,17 @@ def build_gating_strategy(
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
     trans = {}
     for c in Color:
-        arr = df_beads[c].values
+        arr = df_beads[c.value].values
         arr_neg = arr[arr < 0]
         maxrange = float(color_ranges[c])
         if arr_neg.size < 10:
             # TODO make these configurable
-            trans[c] = LogicleTransform(maxrange, 1.0, LogicleM, 0)
+            trans[c.value] = LogicleTransform(maxrange, 1.0, LogicleM, 0)
         else:
             low_ref = np.quantile(arr_neg, 0.05)
             # and these...
             best_W = (LogicleM - math.log10(maxrange / abs(low_ref))) / 2
-            trans[c] = LogicleTransform(maxrange, max(best_W, 0.25), LogicleM, 0)
+            trans[c.value] = LogicleTransform(maxrange, max(best_W, 0.25), LogicleM, 0)
 
     for k, v in trans.items():
         g_strat.add_transform(f"{k}_logicle", v)
@@ -482,23 +508,30 @@ def build_gating_strategy(
     if bead_color is None:
         # rainbow beads
         rs = [
-            (c, make_min_density_serial_gates(sc.rainbow, df_beads_x[c].values, 8))
+            (
+                c,
+                make_min_density_serial_gates(
+                    sc.rainbow,
+                    df_beads_x[c.value].values,
+                    8,
+                ),
+            )
             for c in Color
         ]
         # return all results in case we want to debug them...
-        gate_results = dict(rs)
+        gate_results = {k.value: v for k, v in dict(rs).items()}
         # ...but only keep the best color in terms of peak resolution
         # TODO use some metric for "peak separation" here, like the distance b/t
         # the quantiles relative to the distances b/t gates
         maxres = max(rs, key=lambda r: (len(r[1].final_intervals), r[1].final_area))
-        gate_color = maxres[0]
+        gate_color = maxres[0].value
         ints = maxres[1].xintervals
     else:
         # fc beads
-        x = df_beads_x[bead_color].values
+        x = df_beads_x[bead_color.value].values
         r = make_min_density_serial_gates(sc.non_rainbow, x, 2)
-        gate_results[bead_color] = r
-        gate_color = bead_color
+        gate_results[bead_color.value] = r
+        gate_color = bead_color.value
         ints = r.xintervals
 
     gates = [
@@ -533,7 +566,7 @@ def read_path_map(files: Path) -> FileMap:
         om: [
             x[0]
             for x in sorted(
-                gs, key=lambda x: 9 if (c := x[1].color) is None else c.index
+                gs, key=lambda x: 9 if x[1].color is None else x[1].color.index
             )
         ]
         for om, gs in groupby(calibrations, lambda c: c[1].machine.om)
@@ -565,8 +598,11 @@ def read_range_map(params: Path) -> RangeMap:
     )
     acc: RangeMap = {}
     for file_index, maxrange, shortname in df.itertuples(index=False):
-        color = Color(shortname)
-        if color in Color:
+        try:
+            color = Color(shortname)
+        except ValueError:
+            color = None
+        if color is not None:
             p = FileIndex(int(file_index))
             if p not in acc:
                 acc[p] = {}
@@ -604,20 +640,20 @@ def df_to_colormap(om: str, df: pd.DataFrame) -> dict[Color | None, GateBoundari
     else:
         rainbow_range = rainbow_colors[0][1]
 
-    specific_colors = dict([p for p in pairs if p[0] not in ["all", "rainbow"]])
+    specific_colors: dict[Color | None, GateBoundaries] = {
+        Color(p[0]): p[1] for p in pairs if p[0] not in ["all", "rainbow"]
+    }
 
-    if not all([p in Color for p in specific_colors]):
-        raise ValueError(f"invalid colors for {om}")
     if all_range is None and len(specific_colors) != 8:
         raise ValueError(f"not all colors specified for {om}")
 
-    if all_range is None:
-        color_pairs = specific_colors
-    else:
-        xs = dict([(c, all_range) for c in Color if c not in specific_colors])
-        color_pairs = {**xs, **specific_colors}
+    rest: dict[Color | None, GateBoundaries] = (
+        {}
+        if all_range is None
+        else {c: all_range for c in Color if c not in specific_colors}
+    )
 
-    return {**color_pairs, None: rainbow_range}
+    return {**specific_colors, **rest, None: rainbow_range}
 
 
 def read_gate_ranges(ranges_path: Path) -> GateRangeMap:

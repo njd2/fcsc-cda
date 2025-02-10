@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import NamedTuple, Any
 import datetime as dt
-from common.metadata import split_path, FCSMeta, FileIndex
+from common.metadata import split_path, FCSMeta, FileIndex, IndexedPath
 from common.io import (
     group_params,
     _TEXT31,
@@ -50,7 +50,7 @@ def parse_total_time(meta: TabularTEXT) -> tuple[str | None, str | None, float |
 
 
 def parse_metadata(idx: int, p: Path) -> AllMeta:
-    fcs = FCSMeta(file_index=FileIndex(idx), filemeta=split_path(p), filepath=p)
+    fcs = FCSMeta(IndexedPath(FileIndex(idx), p), split_path(p))
     res = read_fcs_metadata(p)
     params = group_params(res.meta.params)
     btime, etime, total_time = parse_total_time(res.meta.standard)

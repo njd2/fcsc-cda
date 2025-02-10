@@ -27,7 +27,7 @@ def main(smk: Any) -> None:
         w = csv.writer(f, delimiter="\t")
         w.writerow(["file_index", "fcs_path", "gate_path"])
         for fcs, gate_out in results:
-            w.writerow([str(fcs.file_index), str(fcs.path), str(gate_out)])
+            w.writerow([str(fcs.file_index), str(fcs.filepath), str(gate_out)])
 
 
 main(snakemake)  # type: ignore
