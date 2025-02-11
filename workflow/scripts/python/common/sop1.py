@@ -17,32 +17,15 @@ from scipy.stats.mstats import mquantiles  # type: ignore
 from scipy.integrate import trapezoid  # type: ignore
 from multiprocessing import Pool
 from common.io import read_fcs
-from common.metadata import (
-    OM,
-    Color,
-    read_files,
-    CalibrationMeta,
-    IndexedPath,
-    FileIndex,
-    split_path,
-)
+import common.metadata as ma
 from common.functional import fmap_maybe, from_maybe, span, partition
-
-
-# TODO need to deal with these things... :/
-NO_SCATTER = [
-    OM("LMNXSEA_CellStream-1"),
-    OM("LMNXSEA_CellStream-2"),
-    OM("LMNXSEA_ImageStreamX-1"),
-]
 
 
 LogicleM = 4.5
 
 
-FileMap = dict[OM, list[IndexedPath]]
-RangeMap = dict[FileIndex, dict[Color, int]]
-FileRangeMap = dict[OM, dict[IndexedPath, dict[Color, int]]]
+FileMap = dict[ma.OM, list[ma.IndexedPath]]
+FileRangeMap = dict[ma.OM, dict[ma.IndexedPath, dict[ma.Color, int]]]
 V_F32 = npt.NDArray[np.float32]
 
 
@@ -54,7 +37,7 @@ class GateBoundaries(NamedTuple):
 
 
 # None = rainbow
-GateRangeMap = dict[OM, dict[Color | None, GateBoundaries]]
+GateRangeMap = dict[ma.OM, dict[ma.Color | None, GateBoundaries]]
 
 
 class AutoGateConfig(NamedTuple):
@@ -216,9 +199,9 @@ DEF_SC = SampleConfig(
 )
 
 
-def path_to_color(p: Path) -> Color | None:
-    x = split_path(p).projection
-    assert isinstance(x, CalibrationMeta)
+def path_to_color(p: Path) -> ma.Color | None:
+    x = ma.split_path(p).projection
+    assert isinstance(x, ma.CalibrationMeta)
     return x.color
 
 
@@ -442,7 +425,7 @@ def make_min_density_serial_gates(
 def build_gating_strategy(
     sc: SampleConfig,
     gs: GateBoundaries,
-    color_ranges: dict[Color, int],
+    color_ranges: dict[ma.Color, int],
     fcs_path: Path,
     scatteronly: bool,
 ) -> tuple[GatingStrategy, Sample, npt.NDArray[np.bool_], GatingStrategyDebug]:
@@ -477,7 +460,7 @@ def build_gating_strategy(
     # for formulas/rationale for doing this).
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
     trans = {}
-    for c in Color:
+    for c in ma.Color:
         arr = df_beads[c.value].values
         arr_neg = arr[arr < 0]
         maxrange = float(color_ranges[c])
@@ -516,7 +499,7 @@ def build_gating_strategy(
                     8,
                 ),
             )
-            for c in Color
+            for c in ma.Color
         ]
         # return all results in case we want to debug them...
         gate_results = {k.value: v for k, v in dict(rs).items()}
@@ -555,12 +538,12 @@ def build_gating_strategy(
 
 def read_path_map(files: Path) -> FileMap:
     """Read a tsv like "index, filepath" and return paths for SOP 1."""
-    fs = read_files(files)
+    fs = ma.read_files(files)
     calibrations = [
         (f.indexed_path, f.filemeta)
         for f in fs
-        if f.filemeta.machine.om not in NO_SCATTER
-        and isinstance(f.filemeta, CalibrationMeta)
+        if f.filemeta.machine.om not in ma.NO_SCATTER
+        and isinstance(f.filemeta, ma.CalibrationMeta)
     ]
     return {
         om: [
@@ -577,11 +560,11 @@ def read_path_map(files: Path) -> FileMap:
     # for file_index, file_path in df.itertuples(index=False):
     #     p = Path(file_path)
     #     xs = p.name.split("_")
-    #     om = OM(f"{xs[2]}_{xs[3]}")
+    #     om = ma.OM(f"{xs[2]}_{xs[3]}")
     #     if xs[5] == "SOP-01" and om not in NO_SCATTER:
     #         if om not in acc:
     #             acc[om] = []
-    #         acc[om] += [FCSFile(FileIndex(int(file_index)), p)]
+    #         acc[om] += [FCSFile(ma.FileIndex(int(file_index)), p)]
     # for k in acc:
     #     acc[k].sort(
     #         key=lambda x: next(
@@ -591,35 +574,16 @@ def read_path_map(files: Path) -> FileMap:
     # return acc
 
 
-def read_range_map(params: Path) -> RangeMap:
-    df = pd.read_table(
-        params,
-        usecols=["file_index", "maxrange", "shortname"],
-    )
-    acc: RangeMap = {}
-    for file_index, maxrange, shortname in df.itertuples(index=False):
-        try:
-            color = Color(shortname)
-        except ValueError:
-            color = None
-        if color is not None:
-            p = FileIndex(int(file_index))
-            if p not in acc:
-                acc[p] = {}
-            acc[p][color] = int(maxrange)
-    return acc
-
-
 def read_path_range_map(files: Path, params: Path) -> FileRangeMap:
     path_map = read_path_map(files)
-    range_map = read_range_map(params)
+    range_map = ma.read_range_map(params)
     return {
         om: {p: range_map[p.file_index] for p in paths}
         for om, paths in path_map.items()
     }
 
 
-def df_to_colormap(om: str, df: pd.DataFrame) -> dict[Color | None, GateBoundaries]:
+def df_to_colormap(om: str, df: pd.DataFrame) -> dict[ma.Color | None, GateBoundaries]:
     pairs = [
         (c, GateBoundaries(int(f0), int(f1), int(s0), int(s1)))
         for _, colors, f0, f1, s0, s1 in df.itertuples(index=False)
@@ -640,17 +604,17 @@ def df_to_colormap(om: str, df: pd.DataFrame) -> dict[Color | None, GateBoundari
     else:
         rainbow_range = rainbow_colors[0][1]
 
-    specific_colors: dict[Color | None, GateBoundaries] = {
-        Color(p[0]): p[1] for p in pairs if p[0] not in ["all", "rainbow"]
+    specific_colors: dict[ma.Color | None, GateBoundaries] = {
+        ma.Color(p[0]): p[1] for p in pairs if p[0] not in ["all", "rainbow"]
     }
 
     if all_range is None and len(specific_colors) != 8:
         raise ValueError(f"not all colors specified for {om}")
 
-    rest: dict[Color | None, GateBoundaries] = (
+    rest: dict[ma.Color | None, GateBoundaries] = (
         {}
         if all_range is None
-        else {c: all_range for c in Color if c not in specific_colors}
+        else {c: all_range for c in ma.Color if c not in specific_colors}
     )
 
     return {**specific_colors, **rest, None: rainbow_range}
@@ -658,21 +622,21 @@ def df_to_colormap(om: str, df: pd.DataFrame) -> dict[Color | None, GateBoundari
 
 def read_gate_ranges(ranges_path: Path) -> GateRangeMap:
     return {
-        OM(om[0]): df_to_colormap(om[0], df)
+        ma.OM(om[0]): df_to_colormap(om[0], df)
         for om, df in pd.read_table(ranges_path).groupby(["om"])
     }
 
 
 class GateRun(NamedTuple):
     sc: SampleConfig
-    om: OM
+    om: ma.OM
     boundaries: Path
-    color_ranges: dict[Color, int]
-    fcs: IndexedPath
+    color_ranges: dict[ma.Color, int]
+    fcs: ma.IndexedPath
     out: Path | None
 
 
-def write_gate_inner(r: GateRun) -> tuple[IndexedPath, Path | None]:
+def write_gate_inner(r: GateRun) -> tuple[ma.IndexedPath, Path | None]:
     all_gs = read_gate_ranges(r.boundaries)
     color = path_to_color(r.fcs.filepath)
     gs, _, _, _ = build_gating_strategy(
@@ -694,13 +658,13 @@ def write_gate_inner(r: GateRun) -> tuple[IndexedPath, Path | None]:
 
 def write_gate(
     sc: SampleConfig,
-    om: OM,
+    om: ma.OM,
     boundaries: Path,
     params: Path,
-    fcs: IndexedPath,
+    fcs: ma.IndexedPath,
     out: Path | None,
-) -> tuple[IndexedPath, Path | None]:
-    range_map = read_range_map(params)
+) -> tuple[ma.IndexedPath, Path | None]:
+    range_map = ma.read_range_map(params)
     color_ranges = range_map[fcs.file_index]
     return write_gate_inner(GateRun(sc, om, boundaries, color_ranges, fcs, out))
 
@@ -712,8 +676,8 @@ def write_all_gates(
     params: Path,
     out_dir: Path | None,
     threads: int | None = None,
-) -> list[tuple[IndexedPath, Path | None]]:
-    def make_out_path(om: OM, p: Path) -> Path | None:
+) -> list[tuple[ma.IndexedPath, Path | None]]:
+    def make_out_path(om: ma.OM, p: Path) -> Path | None:
         color = from_maybe("rainbow", path_to_color(p))
         fn = f"{om}-{color}.xml"
         return fmap_maybe(lambda p: p / fn, out_dir)

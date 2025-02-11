@@ -1,8 +1,9 @@
 import pandas as pd
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from enum import Enum
-from typing import NamedTuple, NewType, Self
+from typing import NamedTuple, NewType, Self, Generic, TypeVar, assert_never
 
 FileIndex = NewType("FileIndex", int)
 OM = NewType("OM", str)
@@ -10,10 +11,21 @@ Rep = NewType("Rep", int)
 Lot = NewType("Lot", int)
 
 
+NO_SCATTER = [
+    OM("LMNXSEA_CellStream-1"),
+    OM("LMNXSEA_CellStream-2"),
+    OM("LMNXSEA_ImageStreamX-1"),
+]
+
+
 class Matrix(Enum):
-    Matrix1 = 0
-    Matrix2 = 1
-    Matrix3 = 2
+    Matrix1 = 1
+    Matrix2 = 2
+    Matrix3 = 3
+
+    @property
+    def name(self) -> str:
+        return f"Matrix {self.value}"
 
 
 class FMOMarker(Enum):
@@ -48,6 +60,51 @@ class Color(Enum):
     APC = "apc"
     AC7 = "ac7"
 
+    @classmethod
+    def from_long_name(cls, s: str) -> "Color":
+        if s == "V450":
+            return Color.V450
+        elif s == "V500-C":
+            return Color.V500
+        elif s == "FITC":
+            return Color.FITC
+        elif s == "PerCP-Cy5.5":
+            return Color.PC55
+        elif s == "PE":
+            return Color.PE
+        elif s == "PE-Cy7":
+            return Color.PC7
+        elif s == "APC":
+            return Color.APC
+        elif s == "APC-Cy7":
+            return Color.AC7
+        else:
+            raise ValueError(f"invalid long name: {s}")
+
+    @classmethod
+    def from_livedead(cls, s: str) -> "Color":
+        if s == "AxPB":
+            # annexin V
+            return Color.V450
+        elif s == "AqLD":
+            # aqua live/dead
+            return Color.V500
+        else:
+            # these should be the only stains in the whole dataset
+            raise ValueError(f"invalid live/dead name: {s}")
+
+    @classmethod
+    def from_compbead(cls, s: str) -> "Color":
+        if s == "PBBead":
+            # Pacific Blue Bead
+            return Color.V450
+        elif s == "AqBead":
+            # Aqua Live/Dead Bead
+            return Color.V500
+        else:
+            # There should only be 2 beads in the entire dataset
+            raise ValueError(f"invalid compensation bead name: {s}")
+
     @property
     def index(self) -> int:
         return [*Color].index(self)
@@ -65,6 +122,27 @@ class Color(Enum):
         return self == other or self > other
 
 
+class CompMaterial(Enum):
+    PBMC = 0
+    LYOLEUK = 2
+    VERSA = 3
+    ABC = 4
+    COMP = 5
+
+    @property
+    def matrix(self) -> Matrix | None:
+        if self is CompMaterial.PBMC or self is CompMaterial.LYOLEUK:
+            return Matrix.Matrix1
+        elif self is CompMaterial.ABC:
+            return Matrix.Matrix2
+        elif self is CompMaterial.VERSA:
+            return Matrix.Matrix3
+        elif self is CompMaterial.COMP:
+            return None
+        else:
+            assert_never(self)
+
+
 _SOP1_COLORS = [
     "V450",
     "V500-C",
@@ -78,42 +156,38 @@ _SOP1_COLORS = [
 
 _SOP1_COLORMAP = {f"FC-{k}": v for k, v in zip(_SOP1_COLORS, Color)}
 
-_SOP2_M1_MATERIALS = [
-    "AxPB-lyoLeuk",
-    "AqLD-lyoLeuk",
-    "FITC-cryoPBMC",
-    "PerCP-Cy5.5-cryoPBMC",
-    "PE-cryoPBMC",
-    "PE-Cy7-cryoPBMC",
-    "APC-cryoPBMC",
-    "APC-Cy7-cryoPBMC",
-]
+
+_SOP2_MATERIAL_MAP = {
+    "Versacmp": CompMaterial.VERSA,
+    "AbCTotal": CompMaterial.ABC,
+    "lyoLeuk": CompMaterial.LYOLEUK,
+    "cryoPBMC": CompMaterial.PBMC,
+}
 
 
-_SOP2_M2_MATERIALS = [
-    "FITC-AbCTotal",
-    "PerCP-Cy5.5-AbCTotal",
-    "PE-AbCTotal",
-    "PE-Cy7-AbCTotal",
-    "APC-Cy7-AbCTotal",
-    "APC-AbCTotal",
-]
+def parse_bead_cell_type(s: str) -> CompMaterial:
+    if s == "Versacmp":
+        return CompMaterial.VERSA
+    elif s == "AbCTotal":
+        return CompMaterial.ABC
+    elif s == "lyoLeuk":
+        return CompMaterial.LYOLEUK
+    elif s == "cryoPBMC":
+        return CompMaterial.PBMC
+    else:
+        # compensation beads don't have an indicator in the material string
+        raise ValueError(f"Invalid bead/cell type: {s}")
 
-_SOP2_M3_MATERIALS = [
-    "FITC-Versacmp",
-    "PerCP-Cy5.5-Versacmp",
-    "PE-Versacmp",
-    "PE-Cy7-Versacmp",
-    "APC-Versacmp",
-    "APC-Cy7-Versacmp",
-]
 
-_SOP2_M4_MATERIALS = ["PBBead", "AqBead"]
-
-_SOP2_M1_COLORMAP = {k: v for k, v in zip(_SOP2_M1_MATERIALS, Color)}
-_SOP2_M2_COLORMAP = {k: v for k, v in zip(_SOP2_M2_MATERIALS, [*Color][2:])}
-_SOP2_M3_COLORMAP = {k: v for k, v in zip(_SOP2_M3_MATERIALS, [*Color][2:])}
-_SOP2_M4_COLORMAP = {k: v for k, v in zip(_SOP2_M4_MATERIALS, [*Color][:2])}
+def parse_sop2_material(s: str) -> tuple[Color, CompMaterial, Matrix | None]:
+    try:
+        return (Color.from_compbead(s), CompMaterial.COMP, None)
+    except ValueError:
+        if (m := re.match("^(.+)-([^-]+?)$", s)) is None:
+            raise ValueError(f"Could not parse SOP2 material {s}")
+        mat = parse_bead_cell_type(m[2])
+        f = Color.from_livedead if mat is CompMaterial.LYOLEUK else Color.from_long_name
+        return (f(m[1]), mat, mat.matrix)
 
 
 _SOP3_FMO_COLORMAP = {
@@ -153,6 +227,28 @@ def format_group(sop: int, exp: int, material: str) -> str:
         return f"SOP 3: {s}"
 
 
+RangeMap = dict[FileIndex, dict[Color, int]]
+
+
+def read_range_map(params: Path) -> RangeMap:
+    df = pd.read_table(
+        params,
+        usecols=["file_index", "maxrange", "shortname"],
+    )
+    acc: RangeMap = {}
+    for file_index, maxrange, shortname in df.itertuples(index=False):
+        try:
+            color = Color(shortname)
+        except ValueError:
+            color = None
+        if color is not None:
+            p = FileIndex(int(file_index))
+            if p not in acc:
+                acc[p] = {}
+            acc[p][color] = int(maxrange)
+    return acc
+
+
 class CalibrationMeta(NamedTuple):
     machine: Machine
     color: Color | None
@@ -162,6 +258,7 @@ class CompensationMeta(NamedTuple):
     machine: Machine
     color: Color
     matrix: Matrix | None
+    material: CompMaterial
 
 
 class FMOMeta(NamedTuple):
@@ -192,7 +289,38 @@ class QCCountMeta(NamedTuple):
     rep: Rep
 
 
-SplitFileMeta = (
+class IndexedPath(NamedTuple):
+    file_index: FileIndex
+    filepath: Path
+
+    @classmethod
+    def tsv_header(cls) -> list[str]:
+        return ["file_index", "filepath"]
+
+    @property
+    def line(self) -> list[str]:
+        return [str(self.file_index), str(self.filepath)]
+
+
+M = TypeVar(
+    "M",
+    CalibrationMeta,
+    CompensationMeta,
+    FMOMeta,
+    PhenoMeta,
+    CountMeta,
+    QCPhenoMeta,
+    QCCountMeta,
+)
+
+
+@dataclass(frozen=True)
+class SplitFCSMeta(Generic[M]):
+    indexed_path: IndexedPath
+    filemeta: M
+
+
+AnyMeta = (
     CalibrationMeta
     | CompensationMeta
     | FMOMeta
@@ -200,6 +328,24 @@ SplitFileMeta = (
     | CountMeta
     | QCPhenoMeta
     | QCCountMeta
+)
+
+FcsCalibrationMeta = SplitFCSMeta[CalibrationMeta]
+FcsCompensationMeta = SplitFCSMeta[CompensationMeta]
+FcsFMOMeta = SplitFCSMeta[FMOMeta]
+FcsPhenoMeta = SplitFCSMeta[PhenoMeta]
+FcsCountMeta = SplitFCSMeta[CountMeta]
+FcsQCPhenoMeta = SplitFCSMeta[QCPhenoMeta]
+FcsQCCountMeta = SplitFCSMeta[QCCountMeta]
+
+AnySplitFCSMeta = (
+    FcsCalibrationMeta
+    | FcsCompensationMeta
+    | FcsFMOMeta
+    | FcsPhenoMeta
+    | FcsCountMeta
+    | FcsQCPhenoMeta
+    | FcsQCCountMeta
 )
 
 
@@ -227,7 +373,7 @@ class FCSPathMeta(NamedTuple):
         return format_group(self.sop, self.eid, self.material)
 
     @property
-    def projection(self) -> SplitFileMeta:
+    def projection(self) -> AnyMeta:
         if self.sop == 1:
             try:
                 color = (
@@ -240,21 +386,16 @@ class FCSPathMeta(NamedTuple):
                 raise ValueError(f"invalid color for SOP 1: {self}")
 
         elif self.sop == 2:
-            if self.eid == 1 and self.material in _SOP2_M1_COLORMAP:
-                cm = _SOP2_M1_COLORMAP
-                mat = Matrix.Matrix1
-            elif self.eid == 2 and self.material in _SOP2_M2_COLORMAP:
-                cm = _SOP2_M2_COLORMAP
-                mat = Matrix.Matrix2
-            elif self.eid == 3 and self.material in _SOP2_M3_COLORMAP:
-                cm = _SOP2_M3_COLORMAP
-                mat = Matrix.Matrix3
-            elif self.eid == 4 and self.material in _SOP2_M4_COLORMAP:
-                cm = _SOP2_M4_COLORMAP
-                mat = None
-            else:
-                raise ValueError(f"invalid SOP 2: {self}")
-            return CompensationMeta(self.machine, cm[self.material], mat)
+            color, mat, matrix = parse_sop2_material(self.material)
+            if not (
+                (self.eid == 1 and matrix is Matrix.Matrix1)
+                or (self.eid == 2 and matrix is Matrix.Matrix2)
+                or (self.eid == 3 and matrix is Matrix.Matrix3)
+                or (self.eid == 4 and matrix is None)
+            ):
+                raise ValueError(f"invalid color for SOP 2: {self}")
+
+            return CompensationMeta(self.machine, color, matrix, mat)
 
         elif self.sop == 3:
             if self.eid == 1:
@@ -294,19 +435,6 @@ class FCSPathMeta(NamedTuple):
             raise ValueError(f"invalid: {self}")
 
 
-class IndexedPath(NamedTuple):
-    file_index: FileIndex
-    filepath: Path
-
-    @classmethod
-    def tsv_header(cls) -> list[str]:
-        return ["file_index", "filepath"]
-
-    @property
-    def line(self) -> list[str]:
-        return [str(self.file_index), str(self.filepath)]
-
-
 class FCSMeta(NamedTuple):
     indexed_path: IndexedPath
     filemeta: FCSPathMeta
@@ -320,9 +448,9 @@ class FCSMeta(NamedTuple):
         return [*self.indexed_path.line, *self.filemeta.line]
 
 
-class SplitFCSMeta(NamedTuple):
-    indexed_path: IndexedPath
-    filemeta: SplitFileMeta
+# class SplitFCSMeta(NamedTuple):
+#     indexed_path: IndexedPath
+#     filemeta: SplitFileMeta
 
 
 def split_path(p: Path) -> FCSPathMeta:
@@ -340,14 +468,32 @@ def split_path(p: Path) -> FCSPathMeta:
         raise ValueError(f"not a valid FCS path: {p}")
 
 
-def read_files(files: Path) -> list[SplitFCSMeta]:
+def split_indexed_path(p: IndexedPath) -> AnySplitFCSMeta:
+    s = split_path(p.filepath).projection
+    # TODO mypy doesn't understand that a union inside a tuple can be lifted
+    if isinstance(s, CalibrationMeta):
+        return SplitFCSMeta(p, s)
+    elif isinstance(s, CompensationMeta):
+        return SplitFCSMeta(p, s)
+    elif isinstance(s, FMOMeta):
+        return SplitFCSMeta(p, s)
+    elif isinstance(s, PhenoMeta):
+        return SplitFCSMeta(p, s)
+    elif isinstance(s, CountMeta):
+        return SplitFCSMeta(p, s)
+    elif isinstance(s, QCCountMeta):
+        return SplitFCSMeta(p, s)
+    elif isinstance(s, QCPhenoMeta):
+        return SplitFCSMeta(p, s)
+    else:
+        assert_never(s)
+
+
+def read_files(files: Path) -> list[AnySplitFCSMeta]:
     """Read a tsv like "index, filepath" and return parsed metadata."""
 
     df = pd.read_table(files, names=["file_index", "file_path"])
     return [
-        SplitFCSMeta(
-            IndexedPath(FileIndex(int(i)), _p := Path(p)),
-            split_path(_p).projection,
-        )
+        split_indexed_path(IndexedPath(FileIndex(int(i)), Path(p)))
         for i, p in df.itertuples(index=False)
     ]

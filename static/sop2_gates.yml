@@ -1,0 +1,176 @@
+machines:
+  AgilentSC_Quanteon:
+    lyoleuk:
+      default:
+        fsc: [2400000, 3800000]
+        ssc: [200000, 950000]
+    pbmc:
+      default:
+        fsc: [2200000, 3800000]
+        ssc: [200000, 500000]
+    compbead:
+      default:
+        fsc: [1300000, 1500000]
+        ssc: [4500000, 5700000]
+    abc:
+      default:
+        fsc: [1200000, 1500000]
+        ssc: [2500000, 5500000]
+    versa:
+      default:
+        fsc: [325000, 450000]
+        ssc: [1500000, 2000000]
+
+  AZGBBIO_Aurora:
+    lyoleuk:
+      default:
+        fsc: [600000, 2000000]
+        ssc: [200000, 1200000]
+    pbmc:
+      default:
+        fsc: [1100000, 2250000]
+        ssc: [200000, 550000]
+    compbead:
+      default:
+        fsc: [1000000, 1650000]
+        ssc: [1800000, 2400000]
+    abc:
+      default:
+        fsc: [1000000, 1850000]
+        ssc: [1800000, 2500000]
+    versa:
+      default:
+        fsc: [1800000, 2000000]
+        ssc: [1500000, 2000000]
+
+  AZGBBIO_SymphonyA3:
+    lyoleuk:
+      default:
+        fsc: [75000, 150000]
+        ssc: [25000, 110000]
+    pbmc:
+      default:
+        fsc: [100000, 160000]
+        ssc: [25000, 60000]
+    compbead:
+      default:
+        fsc: [130000, 155000]
+        ssc: [70000, 120000]
+    abc:
+      default:
+        fsc: [120000, 155000]
+        ssc: [70000, 120000]
+    versa:
+      default:
+        fsc: [110000, 140000]
+        ssc: [110000, 140000]
+
+  AZGBBIO_SymphonyA5:
+    lyoleuk:
+      default:
+        fsc: [75000, 150000]
+        ssc: [25000, 110000]
+    pbmc:
+      default:
+        fsc: [100000, 160000]
+        ssc: [25000, 60000]
+    compbead:
+      default:
+        fsc: [100000, 125000]
+        ssc: [110000, 150000]
+    abc:
+      default:
+        fsc: [105000, 140000]
+        ssc: [90000, 115000]
+    versa:
+      default:
+        fsc: [105000, 125000]
+        ssc: [100000, 125000]
+
+  AZSSF_Aurora:
+    lyoleuk:
+      default:
+        fsc: [600000, 1600000]
+        ssc: [600000, 2000000]
+    pbmc:
+      default:
+        fsc: [600000, 1600000]
+        ssc: [400000, 1200000]
+    compbead:
+      default:
+        fsc: [1400000, 1700000]
+        ssc: [1300000, 1800000]
+    abc:
+      default:
+        fsc: [1300000, 1700000]
+        ssc: [1400000, 1800000]
+    versa:
+      default:
+        fsc: [800000, 1200000]
+        ssc: [900000, 1250000]
+
+  BMSSeattle_CantoSORP-2:
+    lyoleuk:
+      default:
+        fsc: [30000, 90000]
+        ssc: [15000, 70000]
+    pbmc:
+      default:
+        fsc: [10000, 50000]
+        ssc: [0, 5000]
+    compbead:
+      default:
+        fsc: [110000, 150000]
+        ssc: [70000, 125000]
+    abc:
+      default:
+        fsc: [110000, 125000]
+        ssc: [48000, 70000]
+    versa:
+      default:
+        fsc: [105000, 140000]
+        ssc: [105000, 140000]
+
+  BMSWarren_CantoSORP:
+    lyoleuk:
+      default:
+        fsc: [30000, 90000]
+        ssc: [15000, 90000]
+    pbmc:
+      default:
+        fsc: [60000, 110000]
+        ssc: [19000, 42000]
+    compbead:
+      default:
+        fsc: [75000, 105000]
+        ssc: [70000, 100000]
+    abc:
+      default:
+        fsc: [80000, 110000]
+        ssc: [80000, 110000]
+    versa:
+      default:
+        fsc: [80000, 97500]
+        ssc: [80000, 92500]
+
+  BMSWarren_MQA10-1:
+    lyoleuk:
+      default:
+        fsc: [40000, 120000]
+        ssc: [30000, 70000]
+    pbmc:
+      default:
+        fsc: [100000, 200000]
+        ssc: [10000, 50500]
+    compbead:
+      default:
+        fsc: [50000, 75000]
+        ssc: [55000, 90000]
+    abc:
+      default:
+        fsc: [50000, 70000]
+        ssc: [50000, 80000]
+    versa:
+      default:
+        fsc: [80000, 110000]
+        ssc: [35000, 50000]
