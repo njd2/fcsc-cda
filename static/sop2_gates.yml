@@ -470,3 +470,151 @@ machines:
       default:
         fsc: [30000, 45000]
         ssc: [90000, 120000]
+
+  NISTGB-LW_AttuneNXT:
+    lyoleuk:
+      default:
+        fsc: [150000, 350000]
+        ssc: [100000, 500000]
+    pbmc:
+      default:
+        fsc: [300000, 450000]
+        ssc: [100000, 250000]
+    compbead:
+      default:
+        fsc: [400000, 450000]
+        ssc: [350000, 400000]
+    abc:
+      default:
+        fsc: [400000, 450000]
+        ssc: [250000, 350000]
+    versa:
+      default:
+        fsc: [225000, 300000]
+        ssc: [400000, 550000]
+
+  NISTGB-LW_CytoflexLX:
+    lyoleuk:
+      default:
+        fsc: [250000, 375000]
+        ssc: [100000, 375000]
+    pbmc:
+      default:
+        fsc: [300000, 450000]
+        ssc: [80000, 200000]
+    compbead:
+      default:
+        fsc: [200000, 300000]
+        ssc: [400000, 520000]
+    abc:
+      default:
+        fsc: [200000, 300000]
+        ssc: [300000, 600000]
+    versa:
+      default:
+        fsc: [100000, 180000]
+        ssc: [600000, 750000]
+
+  Q2LabSol_Aurora:
+    lyoleuk:
+      default:
+        vertices:
+          - [1000000, 1300000]
+          - [1600000, 800000]
+          - [1200000, 500000]
+          - [600000, 1100000]
+    pbmc:
+      default:
+        fsc: [1200000, 2000000]
+        ssc: [500000, 1000000]
+    compbead:
+      default:
+        fsc: [1000000, 1400000]
+        ssc: [1500000, 1800000]
+    abc:
+      default:
+        fsc: [1200000, 2800000]
+        ssc: [2000000, 2800000]
+      overrides:
+        - colors: [fitc]
+          fsc: [1700000, 2200000]
+          ssc: [2250000, 2600000]
+    versa:
+      default:
+        fsc: [1300000, 1550000]
+        ssc: [1400000, 1600000]
+
+  UDel_FusionI:
+    lyoleuk:
+      default:
+        vertices:
+          - [45000, 70000]
+          - [70000, 45000]
+          - [55000, 25000]
+          - [30000, 50000]
+    pbmc:
+      default:
+        fsc: [65000, 100000]
+        ssc: [15000, 45000]
+    compbead:
+      default:
+        fsc: [25000, 30000]
+        ssc: [40000, 55000]
+    abc:
+      default:
+        fsc: [50000, 80000]
+        ssc: [70000, 120000]
+    versa:
+      default:
+        fsc: [55000, 75000]
+        ssc: [50000, 70000]
+
+  UDel_FusionII:
+    lyoleuk:
+      default:
+        vertices:
+          - [50000, 50000]
+          - [80000, 30000]
+          - [70000, 10000]
+          - [40000, 30000]
+    pbmc:
+      default:
+        fsc: [60000, 80000]
+        ssc: [10000, 25000]
+    compbead:
+      default:
+        fsc: [55000, 78000]
+        ssc: [80000, 95000]
+    abc:
+      default:
+        fsc: [50000, 80000]
+        ssc: [70000, 100000]
+    versa:
+      default:
+        fsc: [55000, 75000]
+        ssc: [50000, 70000]
+
+  WRAIR_Fortessa:
+    lyoleuk:
+      default:
+        vertices:
+          - [40000, 140000]
+          - [70000, 130000]
+          - [70000, 20000]
+          - [40000, 20000]
+    pbmc:
+      default:
+        fsc: [60000, 80000]
+        ssc: [80000, 130000]
+    compbead:
+      default:
+        fsc: [55000, 78000]
+        ssc: [80000, 95000]
+    abc:
+      default:
+        fsc: [50000, 80000]
+        ssc: [70000, 100000]
+    versa:
+      default:
+        fsc: [60000, 75000]
+        ssc: [75000, 100000]

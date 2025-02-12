@@ -18,7 +18,7 @@ from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
 from common.functional import fmap_maybe, partition
 from pydantic import BaseModel as BaseModel_
-from pydantic import Field
+from pydantic import Field, validator
 from common.io import read_fcs
 import common.sop1 as s1
 import common.metadata as ma
@@ -61,6 +61,11 @@ class GateInterval(NamedTuple):
 class RectBounds(BaseModel):
     fsc: GateInterval
     ssc: GateInterval
+
+    @validator("fsc", "ssc")
+    def check_ranges(cls, v: GateInterval) -> GateInterval:
+        assert v.x0 < v.x1, "gate must be positive"
+        return v
 
     @property
     def fsc_min(self) -> float:
