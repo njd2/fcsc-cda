@@ -18,6 +18,7 @@ from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
 from common.functional import fmap_maybe, partition
 from pydantic import BaseModel as BaseModel_
+from pydantic import Field
 from common.io import read_fcs
 import common.sop1 as s1
 import common.metadata as ma
@@ -57,20 +58,79 @@ class GateInterval(NamedTuple):
     x1: float
 
 
-class GateBounds(BaseModel):
+class RectBounds(BaseModel):
     fsc: GateInterval
     ssc: GateInterval
 
+    @property
+    def fsc_min(self) -> float:
+        return self.fsc.x0
 
-class OverrideBounds(GateBounds):
+    @property
+    def fsc_max(self) -> float:
+        return self.fsc.x1
+
+    @property
+    def ssc_min(self) -> float:
+        return self.ssc.x0
+
+    @property
+    def ssc_max(self) -> float:
+        return self.ssc.x1
+
+
+class PolyPoint(NamedTuple):
+    fsc: float
+    ssc: float
+
+
+class PolyBounds(BaseModel):
+    vertices: list[PolyPoint] = Field(..., min_items=3)
+
+    @property
+    def fsc(self) -> list[float]:
+        return [p.fsc for p in self.vertices]
+
+    @property
+    def ssc(self) -> list[float]:
+        return [p.ssc for p in self.vertices]
+
+    @property
+    def fsc_min(self) -> float:
+        return min(self.fsc)
+
+    @property
+    def fsc_max(self) -> float:
+        return max(self.fsc)
+
+    @property
+    def ssc_min(self) -> float:
+        return min(self.ssc)
+
+    @property
+    def ssc_max(self) -> float:
+        return max(self.ssc)
+
+
+AnyBounds = PolyBounds | RectBounds
+
+
+class OverrideRectBounds(RectBounds):
     colors: list[ma.Color]
 
 
-class ExpGates(BaseModel):
-    default: GateBounds
-    overrides: list[OverrideBounds] = []
+class OverridePolyBounds(PolyBounds):
+    colors: list[ma.Color]
 
-    def from_color(self, c: ma.Color) -> GateBounds:
+
+AnyOverrideBounds = OverridePolyBounds | OverrideRectBounds
+
+
+class ExpGates(BaseModel):
+    default: AnyBounds
+    overrides: list[AnyOverrideBounds] = []
+
+    def from_color(self, c: ma.Color) -> AnyBounds:
         try:
             return next((o for o in self.overrides if c in o.colors))
         except StopIteration:
@@ -144,7 +204,7 @@ def read_path_map(files: Path) -> OmMatrixPathMap:
 
 
 def build_gating_strategy(
-    gs: GateBounds,
+    gs: AnyBounds,
     rm: ma.RangeMap,
     bead_color: ma.Color,
     fcs: ma.IndexedPath,
@@ -154,9 +214,21 @@ def build_gating_strategy(
     # Begin by adding the bead population scatter gates according to hardcoded
     # sample ranges
 
-    dim_fsc = fk.Dimension("fsc_a", range_min=gs.fsc.x0, range_max=gs.fsc.x1)
-    dim_ssc = fk.Dimension("ssc_a", range_min=gs.ssc.x0, range_max=gs.ssc.x1)
-    bead_gate = fk.gates.RectangleGate("beads", dimensions=[dim_fsc, dim_ssc])
+    if isinstance(gs, RectBounds):
+        dim_fsc = fk.Dimension("fsc_a", range_min=gs.fsc.x0, range_max=gs.fsc.x1)
+        dim_ssc = fk.Dimension("ssc_a", range_min=gs.ssc.x0, range_max=gs.ssc.x1)
+        bead_gate = fk.gates.RectangleGate("beads", dimensions=[dim_fsc, dim_ssc])
+    elif isinstance(gs, PolyBounds):
+        dim_fsc = fk.Dimension("fsc_a")
+        dim_ssc = fk.Dimension("ssc_a")
+        bead_gate = fk.gates.PolygonGate(
+            "beads",
+            dimensions=[dim_fsc, dim_ssc],
+            vertices=gs.vertices,
+        )
+
+    else:
+        assert_never(gs)
 
     g_strat.add_gate(bead_gate, ("root",))
 
@@ -202,7 +274,7 @@ def build_gating_strategy(
 
 
 def apply_gates_to_sample(
-    gs: GateBounds,
+    gs: AnyBounds,
     bead_color: ma.Color,
     rm: ma.RangeMap,
     fcs: ma.IndexedPath,
@@ -221,8 +293,8 @@ def apply_gates_to_sample(
         "ssc_a",
         source="raw",
         highlight_mask=bead_mask,
-        x_max=min(gs.fsc.x1 * 5, fsc_max),
-        y_max=min(gs.ssc.x1 * 5, ssc_max),
+        x_max=min(gs.fsc_max * 5, fsc_max),
+        y_max=min(gs.ssc_max * 5, ssc_max),
     )
 
     if doublets:

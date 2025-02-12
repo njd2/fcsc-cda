@@ -288,12 +288,20 @@ machines:
   ISAC_BRZE5:
     lyoleuk:
       default:
-        fsc: [5e8, 1.2e9]
-        ssc: [2e8, 8e8]
+        vertices:
+          - [6.5e8, 3e8]
+          - [6e8, 5e8]
+          - [9e8, 7e8]
+          - [1.05e9, 6e8]
+          - [9e8, 3e8]
       overrides:
         - colors: [v500]
-          fsc: [4e8, 1e9]
-          ssc: [1.25e8, 5e8]
+          vertices:
+          - [5.5e8, 1.5e8]
+          - [5e8, 2.5e8]
+          - [7.25e8, 4.25e8]
+          - [8.5e8, 4e8]
+          - [7e8, 1.75e8]
     pbmc:
       default:
         fsc: [8e8, 1.4e9]
@@ -310,3 +318,155 @@ machines:
       default:
         fsc: [75000, 90000]
         ssc: [30000, 50000]
+
+  ISAC_CantoII-1:
+    lyoleuk:
+      default:
+        fsc: [45000, 85000]
+        ssc: [15000, 60000]
+      overrides:
+        - colors: [v500]
+          fsc: [50000, 80000]
+          ssc: [10000, 25000]
+    pbmc:
+      default:
+        fsc: [80000, 125000]
+        ssc: [25000, 75000]
+    compbead:
+      default:
+        fsc: [100000, 120000]
+        ssc: [105000, 125000]
+    abc:
+      default:
+        fsc: [100000, 120000]
+        ssc: [105000, 125000]
+    versa:
+      default:
+        fsc: [45000, 55000]
+        ssc: [80000, 110000]
+
+  ISAC_Lyric-1:
+    lyoleuk:
+      default:
+        fsc: [60000, 100000]
+        ssc: [15000, 60000]
+      overrides:
+        - colors: [v500]
+          fsc: [60000, 100000]
+          ssc: [10000, 40000]
+    pbmc:
+      default:
+        fsc: [90000, 125000]
+        ssc: [15000, 40000]
+    compbead:
+      default:
+        fsc: [95000, 100000]
+        ssc: [125000, 170000]
+    abc:
+      default:
+        fsc: [95000, 100000]
+        ssc: [125000, 170000]
+    versa:
+      default:
+        fsc: [60000, 75000]
+        ssc: [40000, 65000]
+
+  KITE_CytoflexS:
+    lyoleuk:
+      default:
+        fsc: [260000, 400000]
+        ssc: [40000, 160000]
+    pbmc:
+      default:
+        fsc: [140000, 200000]
+        ssc: [50000, 120000]
+    compbead:
+      default:
+        fsc: [200000, 300000]
+        ssc: [400000, 700000]
+      overrides:
+        - colors: [v500]
+          fsc: [75000, 125000]
+          ssc: [400000, 700000]
+    abc:
+      default:
+        fsc: [175000, 280000]
+        ssc: [350000, 700000]
+    versa:
+      default:
+        fsc: [75000, 95000]
+        ssc: [350000, 450000]
+
+  MSKCC_Aurora:
+    lyoleuk:
+      default:
+        fsc: [600000, 1200000]
+        ssc: [500000, 1.2e6]
+    pbmc:
+      default:
+        fsc: [800000, 1600000]
+        ssc: [200000, 500000]
+    compbead:
+      default:
+        fsc: [500000, 700000]
+        ssc: [1000000, 1400000]
+    abc:
+      default:
+        fsc: [500000, 700000]
+        ssc: [1000000, 1400000]
+    versa:
+      default:
+        fsc: [400000, 500000]
+        ssc: [1000000, 1200000]
+
+  NIBSC_CantoII-1:
+    lyoleuk:
+      default:
+        fsc: [75000, 125000]
+        ssc: [30000, 80000]
+    pbmc:
+      default:
+        fsc: [75000, 125000]
+        ssc: [30000, 80000]
+      overrides:
+        - colors: [fitc]
+          fsc: [100000, 200000]
+          ssc: [0, 20000]
+    compbead:
+      default:
+        fsc: [80000, 100000]
+        ssc: [90000, 130000]
+    abc:
+      default:
+        fsc: [120000, 170000]
+        ssc: [90000, 120000]
+    versa:
+      default:
+        fsc: [60000, 80000]
+        ssc: [45000, 70000]
+
+  NIBSC_CantoII-2:
+    lyoleuk:
+      default:
+        fsc: [75000, 125000]
+        ssc: [30000, 80000]
+    pbmc:
+      default:
+        fsc: [75000, 125000]
+        ssc: [30000, 80000]
+      overrides:
+        - colors: [fitc]
+          fsc: [30000, 55000]
+          ssc: [24000, 60000]
+    compbead:
+      default:
+        fsc: [80000, 100000]
+        ssc: [60000, 130000]
+    abc:
+      default:
+        fsc: [50000, 75000]
+        ssc: [75000, 100000]
+    versa:
+      default:
+        fsc: [30000, 45000]
+        ssc: [90000, 120000]
