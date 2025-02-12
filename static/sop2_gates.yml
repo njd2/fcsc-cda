@@ -173,4 +173,140 @@ machines:
     versa:
       default:
         fsc: [80000, 110000]
-        ssc: [35000, 50000]
+        ssc: [32500, 50000]
+
+  BMSWarren_MQA10-2:
+    lyoleuk:
+      default:
+        fsc: [20000, 45000]
+        ssc: [20000, 60000]
+    pbmc:
+      default:
+        fsc: [40000, 85000]
+        ssc: [10000, 30000]
+    compbead:
+      default:
+        fsc: [20000, 45000]
+        ssc: [55000, 85000]
+    abc:
+      default:
+        fsc: [20000, 45000]
+        ssc: [55000, 85000]
+    versa:
+      default:
+        fsc: [80000, 140000]
+        ssc: [32500, 50000]
+
+  FDACBER_AriaIII:
+    lyoleuk:
+      default:
+        fsc: [30000, 90000]
+        ssc: [20000, 90000]
+    pbmc:
+      default:
+        fsc: [30000, 95000]
+        ssc: [35000, 100000]
+    compbead:
+      default:
+        fsc: [95000, 120000]
+        ssc: [80000, 130000]
+    abc:
+      default:
+        fsc: [90000, 115000]
+        ssc: [80000, 120000]
+    versa:
+      default:
+        fsc: [70000, 115000]
+        ssc: [90000, 130000]
+
+  FDACBER_Canto10:
+    lyoleuk:
+      default:
+        fsc: [32500, 90000]
+        ssc: [20000, 90000]
+    pbmc:
+      default:
+        fsc: [40000, 95000]
+        ssc: [25000, 80000]
+    compbead:
+      default:
+        fsc: [120000, 145000]
+        ssc: [110000, 160000]
+    abc:
+      default:
+        fsc: [120000, 145000]
+        ssc: [110000, 160000]
+    versa:
+      default:
+        fsc: [110000, 130000]
+        ssc: [115000, 140000]
+
+  FDACBER_CantoII-1:
+    lyoleuk:
+      default:
+        fsc: [40000, 90000]
+        ssc: [20000, 90000]
+    pbmc:
+      default:
+        fsc: [60000, 110000]
+        ssc: [25000, 70000]
+    compbead:
+      default:
+        fsc: [55000, 70000]
+        ssc: [85000, 135000]
+    abc:
+      default:
+        fsc: [55000, 70000]
+        ssc: [85000, 125000]
+    versa:
+      default:
+        fsc: [90000, 105000]
+        ssc: [110000, 130000]
+
+  FDACBER_Fortessa:
+    lyoleuk:
+      default:
+        fsc: [70000, 120000]
+        ssc: [20000, 90000]
+    pbmc:
+      default:
+        fsc: [70000, 100000]
+        ssc: [25000, 75000]
+    compbead:
+      default:
+        fsc: [100000, 120000]
+        ssc: [90000, 125000]
+    abc:
+      default:
+        fsc: [100000, 120000]
+        ssc: [90000, 125000]
+    versa:
+      default:
+        fsc: [75000, 90000]
+        ssc: [80000, 105000]
+
+  ISAC_BRZE5:
+    lyoleuk:
+      default:
+        fsc: [5e8, 1.2e9]
+        ssc: [2e8, 8e8]
+      overrides:
+        - colors: [v500]
+          fsc: [4e8, 1e9]
+          ssc: [1.25e8, 5e8]
+    pbmc:
+      default:
+        fsc: [8e8, 1.4e9]
+        ssc: [2e8, 6e8]
+    compbead:
+      default:
+        fsc: [115000, 125000]
+        ssc: [92500, 110000]
+    abc:
+      default:
+        fsc: [110000, 125000]
+        ssc: [55000, 80000]
+    versa:
+      default:
+        fsc: [75000, 90000]
+        ssc: [30000, 50000]

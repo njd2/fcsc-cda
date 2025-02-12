@@ -6,7 +6,8 @@ import argparse
 import numpy as np
 import numpy.typing as npt
 import sys
-from enum import Enum, unique
+
+# from enum import Enum, unique
 from itertools import groupby
 from typing import Any, Iterator, NamedTuple, assert_never
 from tempfile import NamedTemporaryFile
