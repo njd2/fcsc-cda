@@ -69,19 +69,7 @@ def build_gating_strategy(
     # Begin by adding the bead population scatter gates according to hardcoded
     # sample ranges
 
-    if isinstance(gs, ga.RectBounds):
-        dim_fsc = fk.Dimension("fsc_a", range_min=gs.fsc.x0, range_max=gs.fsc.x1)
-        dim_ssc = fk.Dimension("ssc_a", range_min=gs.ssc.x0, range_max=gs.ssc.x1)
-        bead_gate = fk.gates.RectangleGate("beads", dimensions=[dim_fsc, dim_ssc])
-    elif isinstance(gs, ga.PolyBounds):
-        bead_gate = fk.gates.PolygonGate(
-            "beads",
-            dimensions=[fk.Dimension("fsc_a"), fk.Dimension("ssc_a")],
-            vertices=gs.vertices,
-        )
-    else:
-        assert_never(gs)
-
+    bead_gate = ga.build_scatter_gate(gs)
     g_strat.add_gate(bead_gate, ("root",))
 
     # The color gates are automatically placed according to events, so read

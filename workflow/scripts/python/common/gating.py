@@ -5,6 +5,7 @@ import numpy.typing as npt
 from itertools import combinations
 from functools import reduce
 from typing import Any, NamedTuple, Generator, assert_never
+import flowkit as fk  # type: ignore
 from scipy.stats import gaussian_kde  # type: ignore
 from scipy.stats.mstats import mquantiles  # type: ignore
 from scipy.integrate import trapezoid  # type: ignore
@@ -521,3 +522,29 @@ def make_min_density_serial_gates(
         failed_intervals=fail_merge,
         final_area=final_area,
     )
+
+
+def build_scatter_gate(
+    bounds: AnyBounds,
+    name: str = "beads",
+) -> fk.gates.PolygonGate | fk.gates.RectangleGate:
+    if isinstance(bounds, RectBounds):
+        dim_fsc = fk.Dimension(
+            "fsc_a",
+            range_min=bounds.fsc.x0,
+            range_max=bounds.fsc.x1,
+        )
+        dim_ssc = fk.Dimension(
+            "ssc_a",
+            range_min=bounds.ssc.x0,
+            range_max=bounds.ssc.x1,
+        )
+        return fk.gates.RectangleGate(name, dimensions=[dim_fsc, dim_ssc])
+    elif isinstance(bounds, PolyBounds):
+        return fk.gates.PolygonGate(
+            name,
+            dimensions=[fk.Dimension("fsc_a"), fk.Dimension("ssc_a")],
+            vertices=bounds.vertices,
+        )
+    else:
+        assert_never(bounds)

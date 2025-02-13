@@ -53,10 +53,7 @@ def build_gating_strategy(
     # Begin by adding the bead population scatter gates according to hardcoded
     # sample ranges
 
-    dim_fsc = Dimension("fsc_a", range_min=gs.fsc_min, range_max=gs.fsc_max)
-    dim_ssc = Dimension("ssc_a", range_min=gs.ssc_min, range_max=gs.ssc_max)
-    bead_gate = RectangleGate("beads", dimensions=[dim_fsc, dim_ssc])
-
+    bead_gate = ga.build_scatter_gate(gs)
     g_strat.add_gate(bead_gate, ("root",))
 
     # The color gates are automatically placed according to events, so read
