@@ -290,10 +290,8 @@ def main() -> None:
     if parsed.cmd == "list":
         list_oms(Path(parsed.files))
 
-    # TODO configure def sc
     if parsed.cmd == "plot":
         make_plots(
-            # s1.DEF_SC,
             ma.OM(parsed.om),
             Path(parsed.files),
             Path(parsed.gates),

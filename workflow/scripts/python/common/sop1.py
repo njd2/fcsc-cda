@@ -14,10 +14,8 @@ import common.metadata as ma
 import common.gating as ga
 from common.functional import fmap_maybe, from_maybe
 
-LogicleM = 4.5
-
 FileMap = dict[ma.OM, list[ma.IndexedPath]]
-FileRangeMap = dict[ma.OM, dict[ma.IndexedPath, dict[ma.Color, int]]]
+# FileRangeMap = dict[ma.OM, dict[ma.IndexedPath, dict[ma.Color, int]]]
 V_F32 = npt.NDArray[np.float32]
 
 
@@ -39,31 +37,32 @@ def path_to_color(p: Path) -> ma.Color | None:
 
 
 def build_gating_strategy(
-    sc: ga.SOP1Gates,
-    gs: ga.AnyBounds,
-    color_ranges: dict[ma.Color, int],
-    fcs_path: Path,
+    gs: ga.SOP1Gates,
+    color_ranges: ma.RangeMap,
+    fcs: ma.FcsCalibrationMeta,
     scatteronly: bool,
 ) -> tuple[GatingStrategy, Sample, npt.NDArray[np.bool_], ga.GatingStrategyDebug]:
-    bead_color = path_to_color(fcs_path)
+    om = fcs.filemeta.machine.om
+    pathname = fcs.indexed_path.filepath.name
+    color = fcs.filemeta.color
     g_strat = GatingStrategy()
 
     # Begin by adding the bead population scatter gates according to hardcoded
     # sample ranges
 
-    bead_gate = ga.build_scatter_gate(gs)
+    bead_gate = ga.build_scatter_gate(gs.scatter_gates[om].from_color(color))
     g_strat.add_gate(bead_gate, ("root",))
 
     # The color gates are automatically placed according to events, so read
     # events, make a flowkit Sample, then gate out the beads
-    parsed = read_fcs(fcs_path)
-    smp = Sample(parsed.events, sample_id=str(fcs_path.name))
+    parsed = read_fcs(fcs.indexed_path.filepath)
+    smp = Sample(parsed.events, sample_id=str(fcs.indexed_path.filepath.name))
 
     res = g_strat.gate_sample(smp)
     mask = res.get_gate_membership("beads")
 
     if scatteronly:
-        return g_strat, smp, mask, ga.GatingStrategyDebug(fcs_path.name, {})
+        return (g_strat, smp, mask, ga.GatingStrategyDebug(pathname, {}))
 
     # Apply logicle transform to each color channel. In this case there should
     # be relatively few events in the negative range, so A should be 0. Set M to
@@ -74,13 +73,13 @@ def build_gating_strategy(
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
     trans = {}
     trans_f = (
-        sc.transform_configs.rainbow.to_transform
-        if bead_color is None
-        else sc.transform_configs.fc.to_transform
+        gs.transform_configs.rainbow.to_transform
+        if color is None
+        else gs.transform_configs.fc.to_transform
     )
     for c in ma.Color:
         arr = df_beads[c.value].values
-        maxrange = float(color_ranges[c])
+        maxrange = float(color_ranges[fcs.indexed_path.file_index][c])
         trans[c.value] = trans_f(arr, maxrange)
 
     for k, v in trans.items():
@@ -98,13 +97,13 @@ def build_gating_strategy(
     # population. Do this on transformed data since this is the only sane way to
     # resolve the lower peaks.
     gate_results = {}
-    if bead_color is None:
+    if color is None:
         # rainbow beads
         rs = [
             (
                 c,
                 ga.make_min_density_serial_gates(
-                    sc.autogate_configs.rainbow,
+                    gs.autogate_configs.rainbow,
                     df_beads_x[c.value].values,
                     8,
                 ),
@@ -121,10 +120,10 @@ def build_gating_strategy(
         ints = maxres[1].xintervals
     else:
         # fc beads
-        x = df_beads_x[bead_color.value].values
-        r = ga.make_min_density_serial_gates(sc.autogate_configs.fc, x, 2)
-        gate_results[bead_color.value] = r
-        gate_color = bead_color.value
+        x = df_beads_x[color.value].values
+        r = ga.make_min_density_serial_gates(gs.autogate_configs.fc, x, 2)
+        gate_results[color.value] = r
+        gate_color = color.value
         ints = r.xintervals
 
     gates = [
@@ -143,76 +142,73 @@ def build_gating_strategy(
     ]
     for g in gates:
         g_strat.add_gate(g, ("root", "beads"))
-    return g_strat, smp, mask, ga.GatingStrategyDebug(fcs_path.name, gate_results)
+    return (
+        g_strat,
+        smp,
+        mask,
+        ga.GatingStrategyDebug(pathname, gate_results),
+    )
 
 
-def read_path_map(files: Path) -> FileMap:
+def read_paths(files: Path) -> list[ma.FcsCalibrationMeta]:
     """Read a tsv like "index, filepath" and return paths for SOP 1."""
     fs = ma.read_files(files)
-    calibrations = [
-        (f.indexed_path, f.filemeta)
+    return [
+        ma.FcsCalibrationMeta(f.indexed_path, f.filemeta)
         for f in fs
         if f.filemeta.machine.om not in ma.NO_SCATTER
         and isinstance(f.filemeta, ma.CalibrationMeta)
     ]
+
+
+def read_path_map(files: Path) -> FileMap:
+    """Read a tsv like "index, filepath" and return paths for SOP 1."""
+    calibrations = read_paths(files)
     return {
         om: [
-            x[0]
+            x.indexed_path
             for x in sorted(
-                gs, key=lambda x: 9 if x[1].color is None else x[1].color.index
+                gs,
+                key=lambda x: 9 if x.filemeta.color is None else x.filemeta.color.index,
             )
         ]
-        for om, gs in groupby(calibrations, lambda c: c[1].machine.om)
-    }
-
-
-def read_path_range_map(files: Path, params: Path) -> FileRangeMap:
-    path_map = read_path_map(files)
-    range_map = ma.read_range_map(params)
-    return {
-        om: {p: range_map[p.file_index] for p in paths}
-        for om, paths in path_map.items()
+        for om, gs in groupby(calibrations, lambda c: c.filemeta.machine.om)
     }
 
 
 class GateRun(NamedTuple):
-    om: ma.OM
-    boundaries: Path
-    color_ranges: dict[ma.Color, int]
-    fcs: ma.IndexedPath
+    fcs: ma.FcsCalibrationMeta
+    gate_config: ga.SOP1Gates
+    color_ranges: ma.RangeMap
     out: Path | None
 
 
-def write_gate_inner(r: GateRun) -> tuple[ma.IndexedPath, Path | None]:
-    gate_config = ga.read_gates(r.boundaries).sop1
-    color = path_to_color(r.fcs.filepath)
-    gs, _, _, _ = build_gating_strategy(
-        gate_config,
-        gate_config.scatter_gates[r.om].from_color(color),
-        r.color_ranges,
-        r.fcs.filepath,
-        False,
-    )
-    if r.out is not None:
-        with open(r.out, "wb") as f:
+def write_gating_strategy(out: Path | None, gs: fk.GatingStrategy) -> None:
+    if out is not None:
+        with open(out, "wb") as f:
             fk.export_gatingml(gs, f)
     else:
         # do some POSIX gymnastics to get stdout to accept a bytestream
         with os.fdopen(sys.stdout.fileno(), "wb", closefd=False) as f:
             fk.export_gatingml(gs, f)
-    return (r.fcs, r.out)
 
 
-def write_gate(
-    om: ma.OM,
-    boundaries: Path,
-    params: Path,
-    fcs: ma.IndexedPath,
-    out: Path | None,
-) -> tuple[ma.IndexedPath, Path | None]:
-    range_map = ma.read_range_map(params)
-    color_ranges = range_map[fcs.file_index]
-    return write_gate_inner(GateRun(om, boundaries, color_ranges, fcs, out))
+def write_gate_inner(r: GateRun) -> tuple[ma.IndexedPath, Path | None]:
+    gs = build_gating_strategy(r.gate_config, r.color_ranges, r.fcs, False)[0]
+    write_gating_strategy(r.out, gs)
+    return (r.fcs.indexed_path, r.out)
+
+
+# def write_gate(
+#     om: ma.OM,
+#     boundaries: Path,
+#     params: Path,
+#     fcs: ma.IndexedPath,
+#     out: Path | None,
+# ) -> tuple[ma.IndexedPath, Path | None]:
+#     range_map = ma.read_range_map(params)
+#     color_ranges = range_map[fcs.file_index]
+#     return write_gate_inner(GateRun(om, boundaries, color_ranges, fcs, out))
 
 
 def write_all_gates(
@@ -222,27 +218,21 @@ def write_all_gates(
     out_dir: Path | None,
     threads: int | None = None,
 ) -> list[tuple[ma.IndexedPath, Path | None]]:
-    def make_out_path(om: ma.OM, p: Path) -> Path | None:
-        color = from_maybe("rainbow", path_to_color(p))
+    def make_out_path(c: ma.FcsCalibrationMeta) -> Path | None:
+        color = from_maybe("rainbow", c.filemeta.color)
+        om = c.filemeta.machine.om
         fn = f"{om}-{color}.xml"
         return fmap_maybe(lambda p: p / fn, out_dir)
 
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
 
-    path_range_map = read_path_range_map(files, params)
+    calibrations = read_paths(files)
 
-    runs = [
-        GateRun(
-            om,
-            boundaries,
-            color_ranges,
-            p,
-            make_out_path(om, p.filepath),
-        )
-        for om, path_ranges in path_range_map.items()
-        for p, color_ranges in path_ranges.items()
-    ]
+    gs = ga.read_gates(boundaries).sop1
+    range_map = ma.read_range_map(params)
+
+    runs = [GateRun(c, gs, range_map, make_out_path(c)) for c in calibrations]
 
     if threads is None:
         return list(map(write_gate_inner, runs))
