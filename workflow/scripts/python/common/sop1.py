@@ -1,4 +1,3 @@
-import math
 import sys
 import os
 import numpy as np
@@ -8,7 +7,6 @@ from pathlib import Path
 import flowkit as fk  # type: ignore
 from flowkit import Dimension, Sample, GatingStrategy
 from flowkit._models.gates import RectangleGate  # type: ignore
-from flowkit._models.transforms import LogicleTransform  # type: ignore
 from typing import NamedTuple
 from multiprocessing import Pool
 from common.io import read_fcs
@@ -41,7 +39,7 @@ def path_to_color(p: Path) -> ma.Color | None:
 
 
 def build_gating_strategy(
-    sc: ga.SOP1AutoGateConfig,
+    sc: ga.SOP1Gates,
     gs: ga.AnyBounds,
     color_ranges: dict[ma.Color, int],
     fcs_path: Path,
@@ -75,18 +73,15 @@ def build_gating_strategy(
     # for formulas/rationale for doing this).
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
     trans = {}
+    trans_f = (
+        sc.transform_configs.rainbow.to_transform
+        if bead_color is None
+        else sc.transform_configs.fc.to_transform
+    )
     for c in ma.Color:
         arr = df_beads[c.value].values
-        arr_neg = arr[arr < 0]
         maxrange = float(color_ranges[c])
-        if arr_neg.size < 10:
-            # TODO make these configurable
-            trans[c.value] = LogicleTransform(maxrange, 1.0, LogicleM, 0)
-        else:
-            low_ref = np.quantile(arr_neg, 0.05)
-            # and these...
-            best_W = (LogicleM - math.log10(maxrange / abs(low_ref))) / 2
-            trans[c.value] = LogicleTransform(maxrange, max(best_W, 0.25), LogicleM, 0)
+        trans[c.value] = trans_f(arr, maxrange)
 
     for k, v in trans.items():
         g_strat.add_transform(f"{k}_logicle", v)
@@ -109,7 +104,7 @@ def build_gating_strategy(
             (
                 c,
                 ga.make_min_density_serial_gates(
-                    sc.rainbow,
+                    sc.autogate_configs.rainbow,
                     df_beads_x[c.value].values,
                     8,
                 ),
@@ -127,7 +122,7 @@ def build_gating_strategy(
     else:
         # fc beads
         x = df_beads_x[bead_color.value].values
-        r = ga.make_min_density_serial_gates(sc.fc, x, 2)
+        r = ga.make_min_density_serial_gates(sc.autogate_configs.fc, x, 2)
         gate_results[bead_color.value] = r
         gate_color = bead_color.value
         ints = r.xintervals
@@ -189,11 +184,11 @@ class GateRun(NamedTuple):
 
 
 def write_gate_inner(r: GateRun) -> tuple[ma.IndexedPath, Path | None]:
-    gate_config = ga.read_gates(r.boundaries)
+    gate_config = ga.read_gates(r.boundaries).sop1
     color = path_to_color(r.fcs.filepath)
     gs, _, _, _ = build_gating_strategy(
-        gate_config.sop1.autogate_configs,
-        gate_config.sop1.scatter_gates[r.om].from_color(color),
+        gate_config,
+        gate_config.scatter_gates[r.om].from_color(color),
         r.color_ranges,
         r.fcs.filepath,
         False,

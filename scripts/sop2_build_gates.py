@@ -1,12 +1,11 @@
 #! /usr/bin/env python3
 
-import math
 import argparse
 import numpy as np
 import numpy.typing as npt
 import sys
 from itertools import groupby
-from typing import Any, Iterator, assert_never
+from typing import Any, Iterator
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 import flowkit as fk  # type: ignore
@@ -18,8 +17,6 @@ from common.io import read_fcs
 import common.sop1 as s1
 import common.gating as ga
 import common.metadata as ma
-
-LogicleM = 4.5
 
 
 PathMap = dict[ma.IndexedPath, tuple[ma.Color, ma.CompMaterial]]
@@ -58,7 +55,7 @@ def read_path_map(files: Path) -> OmMatrixPathMap:
 
 
 def build_gating_strategy(
-    conf: ga.AutoGateConfig,
+    conf: ga.SOP2Gates,
     gs: ga.AnyBounds,
     rm: ma.RangeMap,
     bead_color: ma.Color,
@@ -91,19 +88,10 @@ def build_gating_strategy(
     # for formulas/rationale for doing this).
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
     trans = {}
-    lt = fk.transforms.LogicleTransform
     for c in ma.Color:
         arr = df_beads[c.value].values
-        arr_neg = arr[arr < 0]
         maxrange = float(rm[fcs.file_index][c])
-        if arr_neg.size < 10:
-            # TODO make these configurable
-            trans[c.value] = lt(maxrange, 1.0, LogicleM, 0)
-        else:
-            low_ref = np.quantile(arr_neg, 0.05)
-            # and these...
-            best_W = (LogicleM - math.log10(maxrange / abs(low_ref))) / 2
-            trans[c.value] = lt(maxrange, max(best_W, 0.25), LogicleM, 0)
+        trans[c.value] = conf.transform_config.to_transform(arr, maxrange)
 
     for k, v in trans.items():
         g_strat.add_transform(f"{k}_logicle", v)
@@ -114,7 +102,7 @@ def build_gating_strategy(
     gate_results = {}
     # fc beads
     x = df_beads_x[bead_color.value].values
-    r = ga.make_min_density_serial_gates(conf, x, 2)
+    r = ga.make_min_density_serial_gates(conf.autogate_config, x, 2)
     gate_results[bead_color.value] = r
 
     gates = [
@@ -138,7 +126,7 @@ def build_gating_strategy(
 
 
 def apply_gates_to_sample(
-    conf: ga.AutoGateConfig,
+    conf: ga.SOP2Gates,
     gs: ga.AnyBounds,
     bead_color: ma.Color,
     rm: ma.RangeMap,
@@ -222,7 +210,7 @@ def make_plots(
             child=column(
                 [
                     apply_gates_to_sample(
-                        gbs.autogate_config,
+                        gbs,
                         gates.from_material(material).from_color(color),
                         color,
                         rm,
@@ -326,7 +314,6 @@ def main() -> None:
 
     if parsed.cmd == "write_gates":
         s1.write_all_gates(
-            s1.DEF_SC,
             Path(parsed.files),
             Path(parsed.gates),
             Path(parsed.params),

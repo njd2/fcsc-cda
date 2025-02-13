@@ -1,3 +1,4 @@
+import math
 import yaml  # type: ignore
 from pathlib import Path
 import numpy as np
@@ -12,7 +13,7 @@ from scipy.integrate import trapezoid  # type: ignore
 import common.metadata as ma
 from common.functional import span, partition, fmap_maybe_def
 from pydantic import BaseModel as BaseModel_
-from pydantic import Field, validator
+from pydantic import Field, validator, NonNegativeInt
 
 
 V_F32 = npt.NDArray[np.float32]
@@ -168,8 +169,43 @@ class SOP1AutoGateConfig(BaseModel):
     )
 
 
+class LogicleConfig(BaseModel):
+    # Number of decades (parameter "M"); this is usually a good default
+    # according to original logicle paper
+    m: float = 4.5
+
+    # Cutoff for number of events beyond which the negative heuristic is used to
+    # estimate W
+    neg_cutoff: NonNegativeInt = 10
+
+    # Parameter W for data with less than 'neg_cutoff' events below 0.
+    nonneg_w: float = 1.0
+
+    # Minimum parameter W for estimated W for data with more than 'neg_cutoff'
+    # events below 0.
+    neg_min_w: float = 0.25
+
+    # The negative reference value to use when estimating W as a percentile.
+    neg_percentile: float = 0.05
+
+    def to_transform(self, x: V_F32, maxrange: float) -> fk.transforms.LogicleTransform:
+        x_neg = x[x < 0]
+        if x_neg.size < 10:
+            w = self.nonneg_w
+        else:
+            low_ref = np.quantile(x_neg, self.neg_percentile)
+            w = (self.m - math.log10(maxrange / abs(low_ref))) / 2
+        return fk.transforms.LogicleTransform(maxrange, w, self.m, 0)
+
+
+class SOP1TransformConfigs(BaseModel):
+    fc: LogicleConfig = LogicleConfig()
+    rainbow: LogicleConfig = LogicleConfig()
+
+
 class SOP1Gates(BaseModel):
     autogate_configs: SOP1AutoGateConfig = SOP1AutoGateConfig()
+    transform_configs: SOP1TransformConfigs = SOP1TransformConfigs()
     scatter_gates: dict[ma.OM, SOP1ScatterGates]
 
     # TODO validate the machine gate combos
@@ -183,6 +219,7 @@ class SOP2Gates(BaseModel):
         tail_offset=0.255,
         tail_prob=0.141,
     )
+    transform_config: LogicleConfig = LogicleConfig()
     scatter_gates: dict[ma.OM, SOP2ScatterGates]
 
     # TODO validate the machine gate combos

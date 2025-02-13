@@ -17,7 +17,7 @@ import common.gating as ga
 
 
 def apply_gates_to_sample(
-    sc: ga.SOP1AutoGateConfig,
+    sc: ga.SOP1Gates,
     gs: ga.AnyBounds,
     color_ranges: dict[Color, int],
     fcs_path: Path,
@@ -88,7 +88,7 @@ def make_plots(
     non_rainbow_rows, non_rainbow_debug = unzip2(
         [
             apply_gates_to_sample(
-                gating_config.autogate_configs,
+                gating_config,
                 gating_config.scatter_gates[om].from_color(
                     s1.path_to_color(p.filepath)
                 ),
@@ -109,7 +109,7 @@ def make_plots(
     rainbow_row, rainbow_debug = next(
         (
             apply_gates_to_sample(
-                gating_config.autogate_configs,
+                gating_config,
                 gating_config.scatter_gates[om].from_color(None),
                 color_ranges,
                 p.filepath,
