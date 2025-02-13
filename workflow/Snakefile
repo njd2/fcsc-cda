@@ -261,7 +261,7 @@ rule gate_time_channel:
 rule sop1_generate_gates:
     input:
         files=rules.gate_time_channel.output[0],
-        boundaries="static/sop1_gates.tsv",
+        boundaries="static/gates.yml",
         params=rules.read_standardized_fcs_meta.output.params,
     output:
         res_int_sop1 / "gates" / "files.tsv",
