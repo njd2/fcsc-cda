@@ -13,16 +13,17 @@ from bokeh.models import TabPanel, Tabs
 from common.functional import fmap_maybe, unzip2
 from common.metadata import Color, OM
 import common.sop1 as s1
+import common.gating as ga
 
 
 def apply_gates_to_sample(
-    sc: s1.SampleConfig,
-    gs: s1.GateBoundaries,
+    sc: ga.SOP1AutoGateConfig,
+    gs: ga.AnyBounds,
     color_ranges: dict[Color, int],
     fcs_path: Path,
     colors: list[Color],
     scatteronly: bool,
-) -> tuple[Any, s1.GatingStrategyDebug]:
+) -> tuple[Any, ga.GatingStrategyDebug]:
     g_strat, smp, bead_mask, res = s1.build_gating_strategy(
         sc, gs, color_ranges, fcs_path, scatteronly
     )
@@ -70,7 +71,6 @@ def apply_gates_to_sample(
 
 
 def make_plots(
-    sc: s1.SampleConfig,
     boundaries: Path,
     files: Path,
     params: Path,
@@ -80,15 +80,18 @@ def make_plots(
     scatteronly: bool,
     debug: Path | bool,
 ) -> None:
-    all_gs = s1.read_gate_ranges(boundaries)
+    gating_config = ga.read_gates(boundaries).sop1
     path_range_map = s1.read_path_range_map(files, params)
     paths = path_range_map[om]
 
+    # TODO not DRY
     non_rainbow_rows, non_rainbow_debug = unzip2(
         [
             apply_gates_to_sample(
-                sc,
-                all_gs[om][s1.path_to_color(p.filepath)],
+                gating_config.autogate_configs,
+                gating_config.scatter_gates[om].from_color(
+                    s1.path_to_color(p.filepath)
+                ),
                 color_ranges,
                 p.filepath,
                 colors,
@@ -106,8 +109,8 @@ def make_plots(
     rainbow_row, rainbow_debug = next(
         (
             apply_gates_to_sample(
-                sc,
-                all_gs[om][None],
+                gating_config.autogate_configs,
+                gating_config.scatter_gates[om].from_color(None),
                 color_ranges,
                 p.filepath,
                 colors,
@@ -202,10 +205,8 @@ def main() -> None:
     if parsed.cmd == "list":
         list_oms(Path(parsed.files))
 
-    # TODO configure def sc
     if parsed.cmd == "plot":
         make_plots(
-            s1.DEF_SC,
             Path(parsed.gates),
             Path(parsed.files),
             Path(parsed.params),
@@ -228,7 +229,6 @@ def main() -> None:
 
     if parsed.cmd == "write_gates":
         s1.write_all_gates(
-            s1.DEF_SC,
             Path(parsed.files),
             Path(parsed.gates),
             Path(parsed.params),

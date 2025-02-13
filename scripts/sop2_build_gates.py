@@ -1,15 +1,12 @@
 #! /usr/bin/env python3
 
 import math
-import yaml  # type: ignore
 import argparse
 import numpy as np
 import numpy.typing as npt
 import sys
-
-# from enum import Enum, unique
 from itertools import groupby
-from typing import Any, Iterator, NamedTuple, assert_never
+from typing import Any, Iterator, assert_never
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 import flowkit as fk  # type: ignore
@@ -17,160 +14,12 @@ from bokeh.plotting import show, output_file
 from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
 from common.functional import fmap_maybe, partition
-from pydantic import BaseModel as BaseModel_
-from pydantic import Field, validator
 from common.io import read_fcs
 import common.sop1 as s1
+import common.gating as ga
 import common.metadata as ma
 
 LogicleM = 4.5
-
-
-# @unique
-# class EID(Enum):
-#     E1 = 1
-#     E2 = 2
-#     E3 = 3
-#     E4 = 4
-
-#     @classmethod
-#     def from_matrix(cls, m: ma.Matrix | None) -> "EID":
-#         if m is ma.Matrix.Matrix1:
-#             return EID.E1
-#         if m is ma.Matrix.Matrix2:
-#             return EID.E2
-#         if m is ma.Matrix.Matrix3:
-#             return EID.E3
-#         if m is None:
-#             return EID.E4
-#         else:
-#             assert_never(m)
-
-
-class BaseModel(BaseModel_):
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-class GateInterval(NamedTuple):
-    x0: float
-    x1: float
-
-
-class RectBounds(BaseModel):
-    fsc: GateInterval
-    ssc: GateInterval
-
-    @validator("fsc", "ssc")
-    def check_ranges(cls, v: GateInterval) -> GateInterval:
-        assert v.x0 < v.x1, "gate must be positive"
-        return v
-
-    @property
-    def fsc_min(self) -> float:
-        return self.fsc.x0
-
-    @property
-    def fsc_max(self) -> float:
-        return self.fsc.x1
-
-    @property
-    def ssc_min(self) -> float:
-        return self.ssc.x0
-
-    @property
-    def ssc_max(self) -> float:
-        return self.ssc.x1
-
-
-class PolyPoint(NamedTuple):
-    fsc: float
-    ssc: float
-
-
-class PolyBounds(BaseModel):
-    vertices: list[PolyPoint] = Field(..., min_items=3)
-
-    @property
-    def fsc(self) -> list[float]:
-        return [p.fsc for p in self.vertices]
-
-    @property
-    def ssc(self) -> list[float]:
-        return [p.ssc for p in self.vertices]
-
-    @property
-    def fsc_min(self) -> float:
-        return min(self.fsc)
-
-    @property
-    def fsc_max(self) -> float:
-        return max(self.fsc)
-
-    @property
-    def ssc_min(self) -> float:
-        return min(self.ssc)
-
-    @property
-    def ssc_max(self) -> float:
-        return max(self.ssc)
-
-
-AnyBounds = PolyBounds | RectBounds
-
-
-class OverrideRectBounds(RectBounds):
-    colors: list[ma.Color]
-
-
-class OverridePolyBounds(PolyBounds):
-    colors: list[ma.Color]
-
-
-AnyOverrideBounds = OverridePolyBounds | OverrideRectBounds
-
-
-class ExpGates(BaseModel):
-    default: AnyBounds
-    overrides: list[AnyOverrideBounds] = []
-
-    def from_color(self, c: ma.Color) -> AnyBounds:
-        try:
-            return next((o for o in self.overrides if c in o.colors))
-        except StopIteration:
-            return self.default
-
-
-class MachineGates(BaseModel):
-    pbmc: ExpGates
-    lyoleuk: ExpGates
-    abc: ExpGates
-    versa: ExpGates
-    compbead: ExpGates
-
-    def from_material(self, m: ma.CompMaterial) -> ExpGates:
-        if m is ma.CompMaterial.PBMC:
-            return self.pbmc
-        elif m is ma.CompMaterial.LYOLEUK:
-            return self.lyoleuk
-        elif m is ma.CompMaterial.ABC:
-            return self.abc
-        elif m is ma.CompMaterial.VERSA:
-            return self.versa
-        elif m is ma.CompMaterial.COMP:
-            return self.compbead
-        else:
-            assert_never(m)
-
-
-class SOP2Gates(BaseModel):
-    machines: dict[ma.OM, MachineGates]
-
-
-def read_gates(p: Path) -> SOP2Gates:
-    with open(p, "r") as f:
-        return SOP2Gates.parse_obj(yaml.safe_load(f))
 
 
 PathMap = dict[ma.IndexedPath, tuple[ma.Color, ma.CompMaterial]]
@@ -209,7 +58,8 @@ def read_path_map(files: Path) -> OmMatrixPathMap:
 
 
 def build_gating_strategy(
-    gs: AnyBounds,
+    conf: ga.AutoGateConfig,
+    gs: ga.AnyBounds,
     rm: ma.RangeMap,
     bead_color: ma.Color,
     fcs: ma.IndexedPath,
@@ -219,19 +69,16 @@ def build_gating_strategy(
     # Begin by adding the bead population scatter gates according to hardcoded
     # sample ranges
 
-    if isinstance(gs, RectBounds):
+    if isinstance(gs, ga.RectBounds):
         dim_fsc = fk.Dimension("fsc_a", range_min=gs.fsc.x0, range_max=gs.fsc.x1)
         dim_ssc = fk.Dimension("ssc_a", range_min=gs.ssc.x0, range_max=gs.ssc.x1)
         bead_gate = fk.gates.RectangleGate("beads", dimensions=[dim_fsc, dim_ssc])
-    elif isinstance(gs, PolyBounds):
-        dim_fsc = fk.Dimension("fsc_a")
-        dim_ssc = fk.Dimension("ssc_a")
+    elif isinstance(gs, ga.PolyBounds):
         bead_gate = fk.gates.PolygonGate(
             "beads",
-            dimensions=[dim_fsc, dim_ssc],
+            dimensions=[fk.Dimension("fsc_a"), fk.Dimension("ssc_a")],
             vertices=gs.vertices,
         )
-
     else:
         assert_never(gs)
 
@@ -274,12 +121,37 @@ def build_gating_strategy(
         g_strat.add_transform(f"{k}_logicle", v)
 
     smp.apply_transform(trans)
+    df_beads_x = smp.as_dataframe(source="xform", event_mask=mask)
+
+    gate_results = {}
+    # fc beads
+    x = df_beads_x[bead_color.value].values
+    r = ga.make_min_density_serial_gates(conf, x, 2)
+    gate_results[bead_color.value] = r
+
+    gates = [
+        fk.gates.RectangleGate(
+            f"{bead_color.value}_{i}",
+            [
+                fk.Dimension(
+                    bead_color.value,
+                    transformation_ref=f"{bead_color.value}_logicle",
+                    range_min=s.x0,
+                    range_max=s.x1,
+                )
+            ],
+        )
+        for i, s in enumerate(r.xintervals)
+    ]
+    for g in gates:
+        g_strat.add_gate(g, ("root", "beads"))
 
     return g_strat, smp, mask
 
 
 def apply_gates_to_sample(
-    gs: AnyBounds,
+    conf: ga.AutoGateConfig,
+    gs: ga.AnyBounds,
     bead_color: ma.Color,
     rm: ma.RangeMap,
     fcs: ma.IndexedPath,
@@ -287,7 +159,7 @@ def apply_gates_to_sample(
     scatteronly: bool,
     doublets: bool,
 ) -> Any:
-    g_strat, smp, bead_mask = build_gating_strategy(gs, rm, bead_color, fcs)
+    g_strat, smp, bead_mask = build_gating_strategy(conf, gs, rm, bead_color, fcs)
 
     df = smp.as_dataframe(source="raw")
     fsc_max = df["fsc_a"].max()
@@ -313,37 +185,36 @@ def apply_gates_to_sample(
     else:
         ps = [p0]
 
-    # color_gates: dict[ma.Color, list[tuple[float, float]]] = {}
-    # for gname, gpath in g_strat.get_child_gate_ids("beads", ("root",)):
-    #     g = g_strat.get_gate(gname, gpath)
-    #     # ASSUME each gate is a rectangle gate with one dimension
-    #     color = g.get_dimension_ids()[0]
-    #     _color = ma.Color(color)
-    #     dim = g.get_dimension(color)
-    #     if _color not in color_gates:
-    #         color_gates[_color] = []
-    #     color_gates[_color].append((dim.min, dim.max))
-
     if scatteronly:
         return row(*ps)
+
+    color_gates: dict[ma.Color, list[tuple[float, float]]] = {}
+    for gname, gpath in g_strat.get_child_gate_ids("beads", ("root",)):
+        g = g_strat.get_gate(gname, gpath)
+        # ASSUME each gate is a rectangle gate with one dimension
+        color = g.get_dimension_ids()[0]
+        _color = ma.Color(color)
+        dim = g.get_dimension(color)
+        if _color not in color_gates:
+            color_gates[_color] = []
+        color_gates[_color].append((dim.min, dim.max))
 
     df_beads_x = smp.as_dataframe(source="xform", event_mask=bead_mask)
     smp_colors = fk.Sample(df_beads_x, sample_id=str(fcs.filepath.name))
     more_ps = []
     for c in colors:
         p = smp_colors.plot_histogram(c.value, source="raw", x_range=(-0.2, 1))
-        # if c in color_gates:
-        #     p.vspan(x=[g[0] for g in color_gates[c]], color="#ff0000")
-        #     p.vspan(
-        #         x=[g[1] for g in color_gates[c]], color="#00ff00", line_dash="dashed"
-        #     )
+        if c in color_gates:
+            p.vspan(x=[g[0] for g in color_gates[c]], color="#ff0000")
+            p.vspan(
+                x=[g[1] for g in color_gates[c]], color="#00ff00", line_dash="dashed"
+            )
         more_ps.append(p)
 
     return row(*ps, *more_ps)
 
 
 def make_plots(
-    # sc: s1.SampleConfig,
     om: ma.OM,
     files: Path,
     boundaries: Path,
@@ -353,7 +224,8 @@ def make_plots(
     scatteronly: bool,
     # debug: Path | bool,
 ) -> None:
-    gbs = read_gates(boundaries).machines[om]
+    gbs = ga.read_gates(boundaries).sop2
+    gates = gbs.scatter_gates[om]
     path_map = read_path_map(files)[om]
     rm = ma.read_range_map(params)
 
@@ -362,7 +234,8 @@ def make_plots(
             child=column(
                 [
                     apply_gates_to_sample(
-                        gbs.from_material(material).from_color(color),
+                        gbs.autogate_config,
+                        gates.from_material(material).from_color(color),
                         color,
                         rm,
                         p,
