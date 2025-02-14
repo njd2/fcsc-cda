@@ -1,9 +1,11 @@
 import pandas as pd
 import re
+import flowkit as fk  # type: ignore
 from dataclasses import dataclass
 from pathlib import Path
 from enum import Enum
 from typing import NamedTuple, NewType, Self, Generic, TypeVar, assert_never
+from common.functional import from_maybe
 
 FileIndex = NewType("FileIndex", int)
 OM = NewType("OM", str)
@@ -104,6 +106,27 @@ class Color(Enum):
         else:
             # There should only be 2 beads in the entire dataset
             raise ValueError(f"invalid compensation bead name: {s}")
+
+    @property
+    def logicle_id(self) -> str:
+        return f"{self.value}_logicle"
+
+    # TODO this might be a bit too specialized for this class
+    def to_dim(self, bounds: tuple[float, float] | None) -> fk.Dimension:
+        x0, x1 = from_maybe((None, None), bounds)
+        return fk.Dimension(
+            self.value,
+            transformation_ref=self.logicle_id,
+            range_min=x0,
+            range_max=x1,
+        )
+
+    def to_1d_gate(
+        self,
+        i: int,
+        bounds: tuple[float, float] | None,
+    ) -> fk.gates.RectangleGate:
+        return fk.gates.RectangleGate(f"{self.value}_{i}", [self.to_dim(bounds)])
 
     @property
     def index(self) -> int:

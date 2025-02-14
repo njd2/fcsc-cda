@@ -53,10 +53,10 @@ def build_gating_strategy(
         color_ranges[fcs.indexed_path.file_index],
     )
 
-    for k, (name, lt) in trans.items():
-        g_strat.add_transform(name, lt)
+    for c, t in trans.items():
+        g_strat.add_transform(c.logicle_id, t)
 
-    smp.apply_transform({c.value: t for c, (_, t) in trans.items()})
+    smp.apply_transform({c.value: t for c, t in trans.items()})
     df_beads_x = smp.as_dataframe(source="xform", event_mask=mask)
 
     # Place gates on each color channel. This will be different depending on if
@@ -86,32 +86,18 @@ def build_gating_strategy(
         # TODO use some metric for "peak separation" here, like the distance b/t
         # the quantiles relative to the distances b/t gates
         maxres = max(rs, key=lambda r: (len(r[1].final_intervals), r[1].final_area))
-        gate_color = maxres[0].value
+        gate_color = maxres[0]
         ints = maxres[1].xintervals
     else:
         # fc beads
         x = df_beads_x[color.value].values
         r = ga.make_min_density_serial_gates(gs.autogate_configs.fc, x, 2)
         gate_results = {color.value: r}
-        gate_color = color.value
+        gate_color = color
         ints = r.xintervals
 
-    gates = [
-        RectangleGate(
-            f"{gate_color}_{i}",
-            [
-                Dimension(
-                    gate_color,
-                    transformation_ref=f"{gate_color}_logicle",
-                    range_min=s.x0,
-                    range_max=s.x1,
-                )
-            ],
-        )
-        for i, s in enumerate(ints)
-    ]
-    for g in gates:
-        g_strat.add_gate(g, ("root", "beads"))
+    for i, s in enumerate(ints):
+        g_strat.add_gate(gate_color.to_1d_gate(i, (s.x0, s.x1)), ("root", "beads"))
     return (
         g_strat,
         smp,

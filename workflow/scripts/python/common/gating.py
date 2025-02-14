@@ -202,26 +202,19 @@ def transform_colors(
     lc: LogicleConfig,
     df: pd.DataFrame,
     ranges: dict[ma.Color, int],
-) -> dict[ma.Color, tuple[str, fk.transforms.LogicleTransform]]:
+) -> dict[ma.Color, fk.transforms.LogicleTransform]:
     # ASSUME mostly safely that any data vector will be 32-bit floats
     trans = {
         c: (
-            f"{c.value}_logicle",
             lc.to_transform(
                 np.array(df[c.value].values, dtype=np.float32),
                 float(ranges[c]),
-            ),
+            )
         )
         for c in ma.Color
     }
 
     return trans
-
-    # for k, v in trans.items():
-    #     g_strat.add_transform(f"{k}_logicle", v)
-
-    # smp.apply_transform(trans)
-    # df_beads_x = smp.as_dataframe(source="xform", event_mask=mask)
 
 
 class SOP1TransformConfigs(BaseModel):
