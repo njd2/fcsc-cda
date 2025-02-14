@@ -1,11 +1,11 @@
 import math
 import yaml  # type: ignore
+import pandas as pd
 from pathlib import Path
 import numpy as np
-import numpy.typing as npt
 from itertools import combinations
 from functools import reduce
-from typing import Any, NamedTuple, Generator, assert_never
+from typing import Any, NamedTuple, Generator, assert_never, Literal
 import flowkit as fk  # type: ignore
 from scipy.stats import gaussian_kde  # type: ignore
 from scipy.stats.mstats import mquantiles  # type: ignore
@@ -16,7 +16,7 @@ from pydantic import BaseModel as BaseModel_
 from pydantic import Field, validator, NonNegativeInt
 
 
-V_F32 = npt.NDArray[np.float32]
+V_F32 = np.ndarray[Literal[1], np.dtype[np.float32]]
 
 
 class BaseModel(BaseModel_):
@@ -196,6 +196,32 @@ class LogicleConfig(BaseModel):
             low_ref = np.quantile(x_neg, self.neg_percentile)
             w = (self.m - math.log10(maxrange / abs(low_ref))) / 2
         return fk.transforms.LogicleTransform(maxrange, w, self.m, 0)
+
+
+def transform_colors(
+    lc: LogicleConfig,
+    df: pd.DataFrame,
+    ranges: dict[ma.Color, int],
+) -> dict[ma.Color, tuple[str, fk.transforms.LogicleTransform]]:
+    # ASSUME mostly safely that any data vector will be 32-bit floats
+    trans = {
+        c: (
+            f"{c.value}_logicle",
+            lc.to_transform(
+                np.array(df[c.value].values, dtype=np.float32),
+                float(ranges[c]),
+            ),
+        )
+        for c in ma.Color
+    }
+
+    return trans
+
+    # for k, v in trans.items():
+    #     g_strat.add_transform(f"{k}_logicle", v)
+
+    # smp.apply_transform(trans)
+    # df_beads_x = smp.as_dataframe(source="xform", event_mask=mask)
 
 
 class SOP1TransformConfigs(BaseModel):

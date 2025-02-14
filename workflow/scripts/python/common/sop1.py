@@ -42,28 +42,21 @@ def build_gating_strategy(
     if scatteronly:
         return (g_strat, smp, mask, ga.GatingStrategyDebug(pathname, {}))
 
-    # Apply logicle transform to each color channel. In this case there should
-    # be relatively few events in the negative range, so A should be 0. Set M to
-    # be 4.5 (sane default). I don't feel like getting the original range data
-    # for each channel so just use the max of all of them (T = max). Then set W
-    # according to 5% negative heuristic (see Parks et al (the Logicle Paper)
-    # for formulas/rationale for doing this).
+    # Apply logicle transform to each color channel.
     df_beads = smp.as_dataframe(source="raw", event_mask=mask)
-    trans = {}
-    trans_f = (
-        gs.transform_configs.rainbow.to_transform
-        if color is None
-        else gs.transform_configs.fc.to_transform
+    trans_conf = (
+        gs.transform_configs.rainbow if color is None else gs.transform_configs.fc
     )
-    for c in ma.Color:
-        arr = df_beads[c.value].values
-        maxrange = float(color_ranges[fcs.indexed_path.file_index][c])
-        trans[c.value] = trans_f(arr, maxrange)
+    trans = ga.transform_colors(
+        trans_conf,
+        df_beads,
+        color_ranges[fcs.indexed_path.file_index],
+    )
 
-    for k, v in trans.items():
-        g_strat.add_transform(f"{k}_logicle", v)
+    for k, (name, lt) in trans.items():
+        g_strat.add_transform(name, lt)
 
-    smp.apply_transform(trans)
+    smp.apply_transform({c.value: t for c, (_, t) in trans.items()})
     df_beads_x = smp.as_dataframe(source="xform", event_mask=mask)
 
     # Place gates on each color channel. This will be different depending on if
@@ -74,7 +67,6 @@ def build_gating_strategy(
     # gate using peak/valley heuristic for finding "large spikes" in the bead
     # population. Do this on transformed data since this is the only sane way to
     # resolve the lower peaks.
-    gate_results = {}
     if color is None:
         # rainbow beads
         rs = [
@@ -100,7 +92,7 @@ def build_gating_strategy(
         # fc beads
         x = df_beads_x[color.value].values
         r = ga.make_min_density_serial_gates(gs.autogate_configs.fc, x, 2)
-        gate_results[color.value] = r
+        gate_results = {color.value: r}
         gate_color = color.value
         ints = r.xintervals
 
