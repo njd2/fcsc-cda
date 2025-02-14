@@ -6,18 +6,16 @@ import common.sop1 as s1
 
 def main(smk: Any) -> None:
     files_path = Path(smk.input["files"])
-    boundaries_path = Path(smk.input["boundaries"])
+    gates_path = Path(smk.input["gates"])
     params_path = Path(smk.input["params"])
 
     out_path = Path(smk.output[0])
 
     out_dir = out_path.parent
 
-    # TODO make sc configurable
     results = s1.write_all_gates(
-        s1.DEF_SC,
         files_path,
-        boundaries_path,
+        gates_path,
         params_path,
         out_dir,
         smk.threads,

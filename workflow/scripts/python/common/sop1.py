@@ -2,7 +2,6 @@ import sys
 import os
 import numpy as np
 import numpy.typing as npt
-from itertools import groupby
 from pathlib import Path
 import flowkit as fk  # type: ignore
 from flowkit import Dimension, Sample, GatingStrategy
@@ -13,27 +12,6 @@ from common.io import read_fcs
 import common.metadata as ma
 import common.gating as ga
 from common.functional import fmap_maybe, from_maybe
-
-FileMap = dict[ma.OM, list[ma.IndexedPath]]
-# FileRangeMap = dict[ma.OM, dict[ma.IndexedPath, dict[ma.Color, int]]]
-V_F32 = npt.NDArray[np.float32]
-
-
-# None = rainbow
-GateRangeMap = dict[ma.OM, dict[ma.Color | None, ga.AnyBounds]]
-
-
-class D1Root(NamedTuple):
-    """1st derivative roots of f, either a "peak" or "valley" for f."""
-
-    x: float
-    is_peak: bool
-
-
-def path_to_color(p: Path) -> ma.Color | None:
-    x = ma.split_path(p).projection
-    assert isinstance(x, ma.CalibrationMeta)
-    return x.color
 
 
 def build_gating_strategy(
@@ -150,37 +128,38 @@ def build_gating_strategy(
     )
 
 
-def read_paths(files: Path) -> list[ma.FcsCalibrationMeta]:
+def read_paths(files: Path) -> set[ma.FcsCalibrationMeta]:
     """Read a tsv like "index, filepath" and return paths for SOP 1."""
     fs = ma.read_files(files)
-    return [
+    return set(
         ma.FcsCalibrationMeta(f.indexed_path, f.filemeta)
         for f in fs
         if f.filemeta.machine.om not in ma.NO_SCATTER
         and isinstance(f.filemeta, ma.CalibrationMeta)
-    ]
+    )
 
 
-def read_path_map(files: Path) -> FileMap:
-    """Read a tsv like "index, filepath" and return paths for SOP 1."""
-    calibrations = read_paths(files)
-    return {
-        om: [
-            x.indexed_path
-            for x in sorted(
-                gs,
-                key=lambda x: 9 if x.filemeta.color is None else x.filemeta.color.index,
-            )
-        ]
-        for om, gs in groupby(calibrations, lambda c: c.filemeta.machine.om)
-    }
+# def read_path_map(files: Path) -> FileMap:
+#     """Read a tsv like "index, filepath" and return paths for SOP 1."""
+#     calibrations = read_paths(files)
+#     return {
+#         om: set(x.indexed_path for x in gs)
+#         for om, gs in groupby(calibrations, lambda c: c.filemeta.machine.om)
+#     }
 
 
-class GateRun(NamedTuple):
+class CalibrationRun(NamedTuple):
     fcs: ma.FcsCalibrationMeta
     gate_config: ga.SOP1Gates
     color_ranges: ma.RangeMap
-    out: Path | None
+    out_dir: Path | None
+
+    @property
+    def out(self) -> Path | None:
+        color = from_maybe("rainbow", self.fcs.filemeta.color)
+        om = self.fcs.filemeta.machine.om
+        fn = f"{om}-{color}.xml"
+        return fmap_maybe(lambda p: p / fn, self.out_dir)
 
 
 def write_gating_strategy(out: Path | None, gs: fk.GatingStrategy) -> None:
@@ -193,7 +172,7 @@ def write_gating_strategy(out: Path | None, gs: fk.GatingStrategy) -> None:
             fk.export_gatingml(gs, f)
 
 
-def write_gate_inner(r: GateRun) -> tuple[ma.IndexedPath, Path | None]:
+def write_gate_inner(r: CalibrationRun) -> tuple[ma.IndexedPath, Path | None]:
     gs = build_gating_strategy(r.gate_config, r.color_ranges, r.fcs, False)[0]
     write_gating_strategy(r.out, gs)
     return (r.fcs.indexed_path, r.out)
@@ -208,7 +187,7 @@ def write_gate_inner(r: GateRun) -> tuple[ma.IndexedPath, Path | None]:
 # ) -> tuple[ma.IndexedPath, Path | None]:
 #     range_map = ma.read_range_map(params)
 #     color_ranges = range_map[fcs.file_index]
-#     return write_gate_inner(GateRun(om, boundaries, color_ranges, fcs, out))
+#     return write_gate_inner(CalibrationRun(om, boundaries, color_ranges, fcs, out))
 
 
 def write_all_gates(
@@ -218,11 +197,6 @@ def write_all_gates(
     out_dir: Path | None,
     threads: int | None = None,
 ) -> list[tuple[ma.IndexedPath, Path | None]]:
-    def make_out_path(c: ma.FcsCalibrationMeta) -> Path | None:
-        color = from_maybe("rainbow", c.filemeta.color)
-        om = c.filemeta.machine.om
-        fn = f"{om}-{color}.xml"
-        return fmap_maybe(lambda p: p / fn, out_dir)
 
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -232,7 +206,7 @@ def write_all_gates(
     gs = ga.read_gates(boundaries).sop1
     range_map = ma.read_range_map(params)
 
-    runs = [GateRun(c, gs, range_map, make_out_path(c)) for c in calibrations]
+    runs = [CalibrationRun(c, gs, range_map, out_dir) for c in calibrations]
 
     if threads is None:
         return list(map(write_gate_inner, runs))

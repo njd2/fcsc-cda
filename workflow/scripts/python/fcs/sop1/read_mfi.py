@@ -4,8 +4,7 @@ from typing import Any, NamedTuple
 from flowkit import parse_gating_xml, Sample  # type: ignore
 from common.io import read_fcs
 from common.functional import partition
-from common.metadata import Color, OM, IndexedPath, FileIndex, split_path
-import common.sop1 as s1
+import common.metadata as ma
 from multiprocessing import Pool
 
 
@@ -18,9 +17,8 @@ class MFIResult(NamedTuple):
 
 
 class Meta(NamedTuple):
-    fcs: IndexedPath
+    fcs: ma.FcsCalibrationMeta
     gate_path: Path
-    om: OM
 
 
 class Line(NamedTuple):
@@ -30,17 +28,18 @@ class Line(NamedTuple):
 
 
 def read_mfi(m: Meta) -> Line:
-    color = s1.path_to_color(m.fcs.filepath)
+    color = m.fcs.filemeta.color
     gstrat = parse_gating_xml(m.gate_path)
-    fcs = read_fcs(m.fcs.filepath)
-    df_raw = fcs.events
-    s = Sample(df_raw, sample_id=str(m.fcs.filepath.name))
+    fcs_path = m.fcs.indexed_path.filepath
+    parsed = read_fcs(fcs_path)
+    df_raw = parsed.events
+    s = Sample(df_raw, sample_id=str(fcs_path.name))
     res = gstrat.gate_sample(s)
     bead_count = res.get_gate_membership("beads").sum()
 
     def go(gate_name: str) -> MFIResult:
         s = gate_name.split("_")
-        std_name = Color(s[0]).value
+        std_name = ma.Color(s[0]).value
         i = int(s[1])
         mask = res.get_gate_membership(gate_name)
         raw_mfi = df_raw[mask][std_name].median()
@@ -66,7 +65,7 @@ def read_mfi(m: Meta) -> Line:
                     mask.sum(),
                     df_raw[mask][c.value].median(),
                 )
-                for c in Color
+                for c in ma.Color
                 for i, mask in masks.items()
             ]
         return Line(m, mfi, True)
@@ -89,12 +88,14 @@ def main(smk: Any) -> None:
     )
 
     runs = [
-        Meta(
-            IndexedPath(FileIndex(int(file_index)), (p := Path(fcs))),
-            Path(gates),
-            split_path(p).machine.om,
-        )
+        Meta(s, Path(gates))
         for file_index, fcs, gates in df_files.itertuples(index=False)
+        if isinstance(
+            s := ma.split_indexed_path(
+                ma.IndexedPath(ma.FileIndex(int(file_index)), Path(fcs))
+            ),
+            ma.FcsCalibrationMeta,
+        )
     ]
 
     with Pool(smk.threads) as pl:
@@ -103,9 +104,17 @@ def main(smk: Any) -> None:
     rs, fs = partition(lambda x: x.israinbow, results)
 
     def to_df(xs: list[Line]) -> pd.DataFrame:
-        header = [*IndexedPath._fields, "om", *MFIResult._fields]
+        header = [*ma.IndexedPath._fields, "om", *MFIResult._fields]
         return pd.DataFrame(
-            [(*x.meta.fcs, x.meta.om, *m) for x in xs for m in x.mfis],
+            [
+                (
+                    *x.meta.fcs.indexed_path,
+                    x.meta.fcs.filemeta.machine.om,
+                    *m,
+                )
+                for x in xs
+                for m in x.mfis
+            ],
             columns=header,
         )
 
