@@ -5,6 +5,7 @@ src = Path("resources")
 res_int = Path("results/intermediate")
 res_int_fcs = res_int / "fcs"
 res_int_sop1 = res_int / "sop1"
+res_int_sop2 = res_int / "sop2"
 res_meta = res_int / "meta"
 res_meta_std = res_meta / "standardized_fcs"
 res_time = res_int / "time"
@@ -165,6 +166,19 @@ rule summarize_metadata_errors:
         "scripts/Rmd/summarize_metadata_errors.Rmd"
 
 
+rule list_cleaned_files:
+    input:
+        cleaned=rules.standardize_fcs.output,
+        checksums="static/nist_wg2_md5.tsv",
+    output:
+        cleaned_files=res_final_summary / "cleaned_files.tsv",
+        cleaned_orgs=res_final_summary / "cleaned_orgs.tsv",
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/R/list_cleaned_files.R"
+
+
 ################################################################################
 # Clean up time channel
 #
@@ -306,6 +320,7 @@ rule all:
     input:
         rules.summarize_metadata_errors.output,
         rules.summarize_time_errors.output,
-        rules.sop1_make_summary.output,
+        rules.list_cleaned_files.output,
+        # rules.sop1_make_summary.output,
         # rules.compute_power_spectra.output,
         # rules.compute_channel_entropies.output,
