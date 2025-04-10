@@ -40,6 +40,7 @@ df_meta_issues <- read_tsv(
     missing_scatter_height = "l",
     has_incomplete_set = "l",
     has_manual_exclusion = "l",
+    has_replacement = "l",
     .default = "-"
   )
 ) %>%
@@ -72,6 +73,7 @@ df_ranges <- read_tsv(
 df_all_issues <- df_meta_issues %>%
   mutate(
     fatal_metadata_error = case_when(
+      has_replacement ~ "0 no error (replaced)",
       missing_file ~ "1 missing file",
       has_insufficient_events ~ "2 too few events",
       has_manual_exclusion ~ "3 manual exclusion",
@@ -80,12 +82,13 @@ df_all_issues <- df_meta_issues %>%
       missing_scatter_height ~ "6 missing scatter height",
       missing_colors ~ "7 missing color channel",
       has_incomplete_set ~ "8 incomplete",
-      TRUE ~ "9 no fatal metadata error"
+      TRUE ~ "9 no fatal error"
     ) %>%
       fct_relabel(~ str_sub(.x, 3)),
     nonfatal_metadata_error = case_when(
       has_multi_serial | has_multi_cytometer | has_multi_system ~ "1 multi system",
-      fatal_metadata_error != "no fatal metadata error" ~ "2 previous error",
+      fatal_metadata_error != "no fatal error" &
+        fatal_metadata_error != "no error (replaced)" ~ "2 previous error",
       TRUE ~ "4 no non-fatal metadata error"
     ) %>%
       fct_relabel(~ str_sub(.x, 3)),
@@ -94,11 +97,11 @@ df_all_issues <- df_meta_issues %>%
       missing_scatter_area ~ "2 missing scatter area",
       missing_scatter_height ~ "3 missing scatter height",
       missing_colors ~ "4 missing color channel",
-      fatal_metadata_error != "no fatal metadata error" ~ "5 previous error",
+      fatal_metadata_error != "no fatal error" ~ "5 previous error",
       TRUE ~ "6 no channel error"
     ) %>%
       fct_relabel(~ str_sub(.x, 3)),
-    fatal_metadata_alpha = if_else(fatal_metadata_error == "no fatal metadata error", 0.5, 1),
+    fatal_metadata_alpha = if_else(fatal_metadata_error == "no fatal error", 0.5, 1),
     nonfatal_metadata_alpha = if_else(nonfatal_metadata_error == "no non-fatal metadata error", 0.5, 1),
     channel_alpha = if_else(channel_error == "no channel error", 0.5, 1),
   )

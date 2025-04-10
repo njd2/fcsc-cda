@@ -1,9 +1,10 @@
 import csv
 from pathlib import Path
 from typing import Any
-import common.sop1 as s1
+import common.sop2 as s2
 
 
+# TODO soaking wet...
 def main(smk: Any) -> None:
     files_path = Path(smk.input["files"])
     gates_path = Path(smk.input["gates"])
@@ -13,7 +14,7 @@ def main(smk: Any) -> None:
 
     out_dir = out_path.parent
 
-    results = s1.write_all_gates(
+    results = s2.write_all_gates(
         files_path,
         gates_path,
         params_path,

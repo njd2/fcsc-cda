@@ -5,6 +5,7 @@ src = Path("resources")
 res_int = Path("results/intermediate")
 res_int_fcs = res_int / "fcs"
 res_int_sop1 = res_int / "sop1"
+res_int_sop2 = res_int / "sop2"
 res_meta = res_int / "meta"
 res_meta_std = res_meta / "standardized_fcs"
 res_time = res_int / "time"
@@ -86,9 +87,23 @@ rule generate_exclusions:
         "scripts/python/fcs/standardization/generate_exclusions.py"
 
 
+rule generate_replacements:
+    input:
+        "static/wg2_combinations.tsv",
+    output:
+        res_meta / "replacements.tsv",
+    params:
+        replacements=config["replacements"],
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/standardization/generate_replacement.py"
+
+
 rule find_metadata_issues:
     input:
         exclusions=rules.generate_exclusions.output,
+        replacements=rules.generate_replacements.output,
         combos="static/wg2_combinations.tsv",
         channels="static/wg2_linkage.tsv",
         meta=rules.read_fcs_meta.output.meta,
@@ -163,6 +178,19 @@ rule summarize_metadata_errors:
         "envs/tidyverse.yml"
     script:
         "scripts/Rmd/summarize_metadata_errors.Rmd"
+
+
+rule list_cleaned_files:
+    input:
+        cleaned=rules.standardize_fcs.output,
+        checksums="static/nist_wg2_md5.tsv",
+    output:
+        cleaned_files=res_final_summary / "cleaned_files.tsv",
+        cleaned_orgs=res_final_summary / "cleaned_orgs.tsv",
+    conda:
+        "envs/tidyverse.yml"
+    script:
+        "scripts/R/list_cleaned_files.R"
 
 
 ################################################################################
@@ -261,7 +289,7 @@ rule gate_time_channel:
 rule sop1_generate_gates:
     input:
         files=rules.gate_time_channel.output[0],
-        boundaries="static/sop1_gates.tsv",
+        gates="static/gates.yml",
         params=rules.read_standardized_fcs_meta.output.params,
     output:
         res_int_sop1 / "gates" / "files.tsv",
@@ -302,10 +330,54 @@ rule sop1_make_summary:
         "scripts/Rmd/sop1_make_summary.Rmd"
 
 
+################################################################################
+# Run SOP 2
+#
+# This requires that we manually gate all scatter channels (which at the very
+# least will differ b/t each material, of which there are five) and then gating
+# the primary channel peaks (there should be 2) in the case of traditional comp
+# gating. We might also try more sophisticated methods based on regression and
+# such.
+
+
+rule sop2_generate_gates:
+    input:
+        files=rules.gate_time_channel.output[0],
+        gates="static/gates.yml",
+        params=rules.read_standardized_fcs_meta.output.params,
+    output:
+        res_int_sop2 / "gates" / "files.tsv",
+    log:
+        res_int_sop2 / "gates" / "debug.json",
+    threads: 20
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/sop2/generate_gates.py"
+
+
+rule sop2_read_mfi:
+    input:
+        files=rules.sop2_generate_gates.output[0],
+    output:
+        m1=res_int_sop2 / "matrix1.tsv",
+        m2=res_int_sop2 / "matrix2.tsv",
+        m3=res_int_sop2 / "matrix3.tsv",
+        incomplete=res_int_sop2 / "incomplete.tsv",
+    threads: 1
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/sop2/read_mfi.py"
+
+
 rule all:
     input:
         rules.summarize_metadata_errors.output,
         rules.summarize_time_errors.output,
+        rules.list_cleaned_files.output,
         rules.sop1_make_summary.output,
+        rules.generate_replacements.output,
+        # rules.sop2_read_mfi.output,
         # rules.compute_power_spectra.output,
         # rules.compute_channel_entropies.output,

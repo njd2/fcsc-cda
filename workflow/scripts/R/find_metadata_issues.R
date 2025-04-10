@@ -21,6 +21,12 @@ df_exclusions <- read_tsv(
 ) %>%
   rename(exclusion_comment = comment)
 
+df_replacements <- read_tsv(
+  snakemake@input[["replacements"]],
+  col_types = "ciiicc-c"
+) %>%
+  rename(replacement_comment = comment)
+
 df_combos <- read_tsv(
   snakemake@input[["combos"]],
   col_types = "ciiicc"
@@ -179,7 +185,7 @@ df_allowed_missing_scatter <- df_channels %>%
 df_height_required <- df_meta %>%
   # require height scatter channels if the events are cells, since height is
   # needed for doublet exclusion
-  mutate(height_required = str_detect(material, "PBMC|lyoLeuk")) %>%
+  mutate(height_required = str_detect(material, "PBMC|lyoLeuk|lyoLeuk")) %>%
   select(file_index, height_required)
 
 df_file_channels <- df_params_std %>%
@@ -221,6 +227,7 @@ df_multi_issues <- df_meta %>%
 df_issues <- df_combos %>%
   left_join(df_meta, by = c("org", "machine", "sop", "eid", "rep", "material")) %>%
   left_join(df_exclusions, by = c("org", "machine", "sop", "eid", "rep", "material")) %>%
+  left_join(df_replacements, by = c("org", "machine", "sop", "eid", "rep", "material")) %>%
   left_join(df_height_required, by = "file_index") %>%
   mutate(
     missing_file = is.na(file_index),
@@ -230,6 +237,7 @@ df_issues <- df_combos %>%
       sop == 3 ~ MIN_EVENT_SOP3
     ),
     has_manual_exclusion = !is.na(exclusion_comment),
+    has_replacement = !is.na(replacement_comment),
     has_voltage_variation = file_index %in% vdiff_issue_indices,
     has_gain_variation = file_index %in% gdiff_issue_indices,
     percent_complete = tot / min_events * 100,
@@ -239,13 +247,16 @@ df_issues <- df_combos %>%
   left_join(df_file_channels_short, by = "file_index") %>%
   group_by(org, machine) %>%
   mutate(
-    has_incomplete_set = sum(missing_file & required) > 0 |
-      sum(has_insufficient_events & required) > 0 |
-      sum(missing_colors & required) > 0 |
-      sum(missing_time & required) > 0 |
-      sum(missing_scatter_area & required) > 0 |
-      sum(missing_scatter_height & required) > 0 |
-      sum(has_manual_exclusion & required) > 0
+    # machine dataset is incomplete if it is missing any of the required files
+    # and these files do not have a replacement
+    has_incomplete_set =
+      sum(!has_replacement & required & missing_file) > 0 |
+      sum(!has_replacement & required & has_insufficient_events) > 0 |
+      sum(!has_replacement & required & missing_colors) > 0 |
+      sum(!has_replacement & required & missing_time) > 0 |
+      sum(!has_replacement & required & missing_scatter_area) > 0 |
+      sum(!has_replacement & required & missing_scatter_height) > 0 |
+      sum(!has_replacement & required & has_manual_exclusion) > 0
   ) %>%
   ungroup() %>%
   select(
@@ -254,7 +265,8 @@ df_issues <- df_combos %>%
     has_gain_variation, has_insufficient_events, has_multi_serial,
     has_multi_cytometer, has_multi_system, missing_time, missing_colors,
     missing_scatter_area, missing_scatter_height, has_incomplete_set,
-    has_manual_exclusion, exclusion_comment
+    has_manual_exclusion, exclusion_comment,
+    has_replacement, replacement_comment
   ) %>%
   arrange(file_index)
 

@@ -1,16 +1,15 @@
-import csv
 import pandas as pd
 from pathlib import Path
 from typing import Any, NamedTuple
 from flowkit import parse_gating_xml, Sample  # type: ignore
 from common.io import read_fcs
 from common.functional import partition
-import common.sop1 as s1
+import common.metadata as ma
 from multiprocessing import Pool
 
 
 class MFIResult(NamedTuple):
-    std_name: s1.Color
+    std_name: str
     peak_index: int
     bead_count: int
     pop_count: int
@@ -18,10 +17,8 @@ class MFIResult(NamedTuple):
 
 
 class Meta(NamedTuple):
-    file_index: int
-    fcs_path: Path
+    fcs: ma.FcsCalibrationMeta
     gate_path: Path
-    om: s1.OM
 
 
 class Line(NamedTuple):
@@ -31,17 +28,18 @@ class Line(NamedTuple):
 
 
 def read_mfi(m: Meta) -> Line:
-    color = s1.path_to_color(m.fcs_path)
+    color = m.fcs.filemeta.color
     gstrat = parse_gating_xml(m.gate_path)
-    fcs = read_fcs(m.fcs_path)
-    df_raw = fcs.events
-    s = Sample(df_raw, sample_id=str(m.fcs_path.name))
+    fcs_path = m.fcs.indexed_path.filepath
+    parsed = read_fcs(fcs_path)
+    df_raw = parsed.events
+    s = Sample(df_raw, sample_id=str(fcs_path.name))
     res = gstrat.gate_sample(s)
     bead_count = res.get_gate_membership("beads").sum()
 
     def go(gate_name: str) -> MFIResult:
         s = gate_name.split("_")
-        std_name = s1.Color(s[0])
+        std_name = ma.Color(s[0]).value
         i = int(s[1])
         mask = res.get_gate_membership(gate_name)
         raw_mfi = df_raw[mask][std_name].median()
@@ -61,13 +59,13 @@ def read_mfi(m: Meta) -> Line:
             max_index = max(masks.keys())
             mfi = [
                 MFIResult(
-                    c,
+                    c.value,
                     i + 7 - max_index,
                     bead_count,
                     mask.sum(),
-                    df_raw[mask][c].median(),
+                    df_raw[mask][c.value].median(),
                 )
-                for c in s1.COLORS
+                for c in ma.Color
                 for i, mask in masks.items()
             ]
         return Line(m, mfi, True)
@@ -90,8 +88,16 @@ def main(smk: Any) -> None:
     )
 
     runs = [
-        Meta(int(file_index), (p := Path(fcs)), Path(gates), s1.path_to_om(p))
+        Meta(s, Path(gates))
         for file_index, fcs, gates in df_files.itertuples(index=False)
+        if isinstance(
+            (
+                s := ma.split_indexed_path(
+                    ma.IndexedPath(ma.FileIndex(int(file_index)), Path(fcs))
+                )
+            ).filemeta,
+            ma.CalibrationMeta,
+        )
     ]
 
     with Pool(smk.threads) as pl:
@@ -100,9 +106,17 @@ def main(smk: Any) -> None:
     rs, fs = partition(lambda x: x.israinbow, results)
 
     def to_df(xs: list[Line]) -> pd.DataFrame:
-        header = [*Meta._fields, *MFIResult._fields]
+        header = [*ma.IndexedPath._fields, "om", *MFIResult._fields]
         return pd.DataFrame(
-            [(*x.meta, *m) for x in xs for m in x.mfis],
+            [
+                (
+                    *x.meta.fcs.indexed_path,
+                    x.meta.fcs.filemeta.machine.om,
+                    *m,
+                )
+                for x in xs
+                for m in x.mfis
+            ],
             columns=header,
         )
 

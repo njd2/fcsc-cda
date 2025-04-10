@@ -10,54 +10,58 @@ from flowkit import Sample  # type: ignore
 from bokeh.plotting import show, output_file
 from bokeh.layouts import row, column
 from bokeh.models import TabPanel, Tabs
-from common.functional import fmap_maybe, unzip2
+from common.functional import fmap_maybe, unzip2, partition
+from common.metadata import Color, OM
 import common.sop1 as s1
+import common.gating as ga
+import common.metadata as ma
 
 
 def apply_gates_to_sample(
-    sc: s1.SampleConfig,
-    gs: s1.GateBoundaries,
-    color_ranges: dict[s1.Color, int],
-    fcs_path: Path,
-    colors: list[s1.Color],
+    gs: ga.SOP1Gates,
+    color_ranges: ma.RangeMap,
+    fcs: ma.FcsCalibrationMeta,
+    colors: list[Color],
     scatteronly: bool,
-) -> tuple[Any, s1.GatingStrategyDebug]:
+) -> tuple[Any, ga.GatingStrategyDebug]:
     g_strat, smp, bead_mask, res = s1.build_gating_strategy(
-        sc, gs, color_ranges, fcs_path, scatteronly
+        gs, color_ranges, fcs, scatteronly
     )
 
     df = smp.as_dataframe(source="raw")
     fsc_max = df["fsc_a"].max()
     ssc_max = df["ssc_a"].max()
 
+    _gs = gs.scatter_gates[fcs.filemeta.machine.om].from_color(fcs.filemeta.color)
+
     p0 = smp.plot_scatter(
         "fsc_a",
         "ssc_a",
         source="raw",
         highlight_mask=bead_mask,
-        x_max=min(gs.fsc_max * 5, fsc_max),
-        y_max=min(gs.ssc_max * 5, ssc_max),
+        x_max=min(_gs.fsc_max * 5, fsc_max),
+        y_max=min(_gs.ssc_max * 5, ssc_max),
     )
 
     if scatteronly:
         return row(p0), res
 
-    color_gates: dict[s1.Color, list[tuple[float, float]]] = {}
+    color_gates: dict[Color, list[tuple[float, float]]] = {}
     for gname, gpath in g_strat.get_child_gate_ids("beads", ("root",)):
         g = g_strat.get_gate(gname, gpath)
         # ASSUME each gate is a rectangle gate with one dimension
         color = g.get_dimension_ids()[0]
-        _color = s1.Color(color)
+        _color = Color(color)
         dim = g.get_dimension(color)
         if _color not in color_gates:
             color_gates[_color] = []
         color_gates[_color].append((dim.min, dim.max))
 
     df_beads_x = smp.as_dataframe(source="xform", event_mask=bead_mask)
-    smp_colors = Sample(df_beads_x, sample_id=str(fcs_path.name))
+    smp_colors = Sample(df_beads_x, sample_id=str(fcs.indexed_path.filepath.name))
     ps = []
     for c in colors:
-        p = smp_colors.plot_histogram(c, source="raw", x_range=(-0.2, 1))
+        p = smp_colors.plot_histogram(c.value, source="raw", x_range=(-0.2, 1))
         if c in color_gates:
             p.vspan(x=[g[0] for g in color_gates[c]], color="#ff0000")
             p.vspan(
@@ -69,32 +73,32 @@ def apply_gates_to_sample(
 
 
 def make_plots(
-    sc: s1.SampleConfig,
     boundaries: Path,
     files: Path,
     params: Path,
-    om: s1.OM,
+    om: OM,
     rainbow: bool,
-    colors: list[s1.Color],
+    colors: list[Color],
     scatteronly: bool,
     debug: Path | bool,
 ) -> None:
-    all_gs = s1.read_gate_ranges(boundaries)
-    path_range_map = s1.read_path_range_map(files, params)
-    paths = path_range_map[om]
+    gating_config = ga.read_gates(boundaries).sop1
+    calibrations = [c for c in s1.read_paths(files) if c.filemeta.machine.om == om]
+    rangemap = ma.read_range_map(params)
+    rainbow_cs, non_rainbow_cs = partition(
+        lambda x: x.filemeta.color is None,
+        calibrations,
+    )
 
     non_rainbow_rows, non_rainbow_debug = unzip2(
         [
-            apply_gates_to_sample(
-                sc,
-                all_gs[om][s1.path_to_color(p.path)],
-                color_ranges,
-                p.path,
-                colors,
-                scatteronly,
+            apply_gates_to_sample(gating_config, rangemap, c, colors, scatteronly)
+            for c in sorted(
+                non_rainbow_cs,
+                key=lambda x: (
+                    10000 if x.filemeta.color is None else x.filemeta.color.index
+                ),
             )
-            for p, color_ranges in paths.items()
-            if s1.RAINBOW_PAT not in p.path.name
         ]
     )
 
@@ -104,16 +108,8 @@ def make_plots(
     )
     rainbow_row, rainbow_debug = next(
         (
-            apply_gates_to_sample(
-                sc,
-                all_gs[om][None],
-                color_ranges,
-                p.path,
-                colors,
-                scatteronly,
-            )
-            for p, color_ranges in paths.items()
-            if s1.RAINBOW_PAT in p.path.name
+            apply_gates_to_sample(gating_config, rangemap, c, colors, scatteronly)
+            for c in rainbow_cs
         ),
         (None, None),
     )
@@ -201,16 +197,14 @@ def main() -> None:
     if parsed.cmd == "list":
         list_oms(Path(parsed.files))
 
-    # TODO configure def sc
     if parsed.cmd == "plot":
         make_plots(
-            s1.DEF_SC,
             Path(parsed.gates),
             Path(parsed.files),
             Path(parsed.params),
-            s1.OM(parsed.om),
+            OM(parsed.om),
             parsed.rainbow,
-            s1.COLORS if parsed.colors is None else parsed.colors.split(","),
+            [*Color] if parsed.colors is None else parsed.colors.split(","),
             parsed.scatteronly,
             parsed.debugpath,
         )
@@ -227,7 +221,6 @@ def main() -> None:
 
     if parsed.cmd == "write_gates":
         s1.write_all_gates(
-            s1.DEF_SC,
             Path(parsed.files),
             Path(parsed.gates),
             Path(parsed.params),
