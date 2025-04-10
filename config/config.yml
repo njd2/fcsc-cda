@@ -22,3 +22,14 @@ manual_exclusions:
     sop: 2
     eid: 1
     comment: voltages for pacblue and aqua channels flipped
+
+replacements:
+  - org: Q2LabSol
+    machine: Aurora-2
+    sop: 2
+    eid: [1, 2, 3, 4]
+    comment: >-
+      Some channels are mixed; use comp matrices from other Aurora machine
+      from same vendor.
+    replacement: Aurora
+
