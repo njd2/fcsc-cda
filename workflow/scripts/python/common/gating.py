@@ -31,6 +31,7 @@ class AutoGateConfig(BaseModel):
     min_prob: float = 0.1
     tail_offset: float = 0.255
     tail_prob: float = 0.141
+    max_peaks: int = 15
 
 
 class GateInterval(NamedTuple):
@@ -194,7 +195,7 @@ class LogicleConfig(BaseModel):
             w = self.nonneg_w
         else:
             low_ref = np.quantile(x_neg, self.neg_percentile)
-            w = (self.m - math.log10(maxrange / abs(low_ref))) / 2
+            w = max((self.m - math.log10(maxrange / abs(low_ref))) / 2, self.neg_min_w)
         return fk.transforms.LogicleTransform(maxrange, w, self.m, 0)
 
 
@@ -232,7 +233,7 @@ class SOP1Gates(BaseModel):
 
 class SOP2Gates(BaseModel):
     autogate_config: AutoGateConfig = AutoGateConfig(
-        bw=0.2,
+        bw=0.4,
         neighbor_frac=0.5,
         min_prob=0.05,
         tail_offset=0.255,
@@ -491,6 +492,8 @@ def make_min_density_serial_gates(
         return ShapeTest(xi, x25, x75, xf, (x75 - x25) * f)
 
     def find_merge_combination(xs: list[Interval]) -> list[TestInterval]:
+        if len(xs) > ac.max_peaks:
+            raise ValueError(f"trying to optimize {len(xs)} peaks")
         combos = [
             [TestInterval(y, compute_area(y), test_shape(y)) for y in ys]
             for ys in slice_combinations(xs)

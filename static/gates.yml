@@ -386,6 +386,29 @@ sop2:
         default:
           fsc: [800000, 1200000]
           ssc: [900000, 1250000]
+
+    BDSJ_Lyric-2:
+      # TODO this one doesn't have cells, these shouldn't be necessary
+      lyoleuk:
+        default:
+          fsc: [600000, 1600000]
+          ssc: [600000, 2000000]
+      pbmc:
+        default:
+          fsc: [600000, 1600000]
+          ssc: [400000, 1200000]
+      compbead:
+        default:
+          fsc: [155000, 170000]
+          ssc: [125000, 135000]
+      abc:
+        default:
+          fsc: [102500, 115000]
+          ssc: [125000, 137500]
+      versa:
+        default:
+          fsc: [70000, 85000]
+          ssc: [110000, 130000]
   
     BMSSeattle_CantoSORP-2:
       lyoleuk:
@@ -696,6 +719,43 @@ sop2:
         default:
           fsc: [400000, 500000]
           ssc: [1000000, 1200000]
+
+    NIBSC_AriaIII:
+      lyoleuk:
+        default:
+          vertices:
+            - [80000, 80000]
+            - [87500, 50000]
+            - [70000, 30000]
+            - [45000, 30000]
+            - [47500, 60000]
+      pbmc:
+        default:
+          vertices:
+            - [80000, 80000]
+            - [87500, 50000]
+            - [70000, 30000]
+            - [45000, 30000]
+            - [47500, 55000]
+        overrides:
+          - colors: [fitc]
+            vertices:
+              - [40000, 40000]
+              - [70000, 70000]
+              - [70000, 30000]
+              - [40000, 20000]
+      compbead:
+        default:
+          fsc: [65000, 80000]
+          ssc: [50000, 65000]
+      abc:
+        default:
+          fsc: [65000, 75000]
+          ssc: [40000, 50000]
+      versa:
+        default:
+          fsc: [60000, 70000]
+          ssc: [100000, 125000]
   
     NIBSC_CantoII-1:
       lyoleuk:

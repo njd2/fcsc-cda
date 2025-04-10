@@ -316,11 +316,53 @@ rule sop1_make_summary:
         "scripts/Rmd/sop1_make_summary.Rmd"
 
 
+################################################################################
+# Run SOP 2
+#
+# This requires that we manually gate all scatter channels (which at the very
+# least will differ b/t each material, of which there are five) and then gating
+# the primary channel peaks (there should be 2) in the case of traditional comp
+# gating. We might also try more sophisticated methods based on regression and
+# such.
+
+
+rule sop2_generate_gates:
+    input:
+        files=rules.gate_time_channel.output[0],
+        gates="static/gates.yml",
+        params=rules.read_standardized_fcs_meta.output.params,
+    output:
+        res_int_sop2 / "gates" / "files.tsv",
+    log:
+        res_int_sop2 / "gates" / "debug.json",
+    threads: 20
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/sop2/generate_gates.py"
+
+
+rule sop2_read_mfi:
+    input:
+        files=rules.sop2_generate_gates.output[0],
+    output:
+        m1=res_int_sop2 / "matrix1.tsv",
+        m2=res_int_sop2 / "matrix2.tsv",
+        m3=res_int_sop2 / "matrix3.tsv",
+        incomplete=res_int_sop2 / "incomplete.tsv",
+    threads: 1
+    conda:
+        "envs/fcs.yml"
+    script:
+        "scripts/python/fcs/sop2/read_mfi.py"
+
+
 rule all:
     input:
         rules.summarize_metadata_errors.output,
         rules.summarize_time_errors.output,
         rules.list_cleaned_files.output,
         # rules.sop1_make_summary.output,
+        rules.sop2_read_mfi.output,
         # rules.compute_power_spectra.output,
         # rules.compute_channel_entropies.output,

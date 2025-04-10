@@ -4,12 +4,14 @@ import numpy as np
 import numpy.typing as npt
 from pathlib import Path
 import flowkit as fk  # type: ignore
-from typing import NamedTuple
+from typing import NamedTuple, Callable, TypeVar
 from multiprocessing import Pool
 from common.io import read_fcs
 import common.metadata as ma
 import common.gating as ga
 from common.functional import fmap_maybe, from_maybe, partition
+
+X = TypeVar("X")
 
 
 def build_gating_strategy(
@@ -71,10 +73,10 @@ def build_gating_strategy(
     return g_strat, smp, mask
 
 
-def read_paths(files: Path) -> set[ma.FcsCompensationMeta]:
+def read_paths(files: Path) -> list[ma.FcsCompensationMeta]:
     """Read a tsv like "index, filepath" and return paths for SOP 1."""
     fs = ma.read_files(files)
-    return set(
+    return list(
         ma.FcsCompensationMeta(f.indexed_path, f.filemeta)
         for f in fs
         if f.filemeta.machine.om not in ma.NO_SCATTER
@@ -82,16 +84,37 @@ def read_paths(files: Path) -> set[ma.FcsCompensationMeta]:
     )
 
 
+def partition_by_matrix(
+    f: Callable[[X], ma.Matrix | None],
+    cs: list[X],
+) -> tuple[list[X], list[X], list[X]]:
+    m1, rest1 = partition(lambda x: f(x) is ma.Matrix.Matrix1, cs)
+    m4, rest4 = partition(lambda x: f(x) is None, rest1)
+    m2, m3 = partition(lambda x: f(x) is ma.Matrix.Matrix2, rest4)
+    return m1, m2 + m4, m3 + m4
+
+
+# def partition_by_matrix(
+#     cs: set[ma.FcsCompensationMeta],
+# ) -> tuple[
+#     list[ma.FcsCompensationMeta],
+#     list[ma.FcsCompensationMeta],
+#     list[ma.FcsCompensationMeta],
+# ]:
+#     m1, rest1 = partition(lambda x: x.filemeta.matrix is ma.Matrix.Matrix1, cs)
+#     m4, rest4 = partition(lambda x: x.filemeta.matrix is None, rest1)
+#     m2, m3 = partition(lambda x: x.filemeta.matrix is ma.Matrix.Matrix2, rest4)
+#     return m1, m2 + m4, m3 + m4
+
+
 def group_by_matrix(
-    cs: set[ma.FcsCompensationMeta],
-) -> dict[ma.Matrix, set[ma.FcsCompensationMeta]]:
-    m1, rest1 = partition(lambda x: x.filemeta.matrix is ma.Matrix.Matrix1, cs)
-    m4, rest4 = partition(lambda x: x.filemeta.matrix is None, rest1)
-    m2, m3 = partition(lambda x: x.filemeta.matrix is ma.Matrix.Matrix2, rest4)
+    cs: list[ma.FcsCompensationMeta],
+) -> dict[ma.Matrix, list[ma.FcsCompensationMeta]]:
+    m1, m2, m3 = partition_by_matrix(lambda x: x.filemeta.matrix, cs)
     return {
-        ma.Matrix.Matrix1: set(m1),
-        ma.Matrix.Matrix2: set(m2 + m4),
-        ma.Matrix.Matrix3: set(m3 + m4),
+        ma.Matrix.Matrix1: m1,
+        ma.Matrix.Matrix2: m2,
+        ma.Matrix.Matrix3: m3,
     }
 
 
@@ -170,3 +193,4 @@ def write_all_gates(
     else:
         with Pool(threads) as pl:
             return pl.map(write_gate_inner, runs)
+            # return list(map(write_gate_inner, runs[300:320]))

@@ -91,10 +91,12 @@ def main(smk: Any) -> None:
         Meta(s, Path(gates))
         for file_index, fcs, gates in df_files.itertuples(index=False)
         if isinstance(
-            s := ma.split_indexed_path(
-                ma.IndexedPath(ma.FileIndex(int(file_index)), Path(fcs))
-            ),
-            ma.FcsCalibrationMeta,
+            (
+                s := ma.split_indexed_path(
+                    ma.IndexedPath(ma.FileIndex(int(file_index)), Path(fcs))
+                )
+            ).filemeta,
+            ma.CalibrationMeta,
         )
     ]
 
