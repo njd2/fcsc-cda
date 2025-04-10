@@ -185,7 +185,7 @@ df_allowed_missing_scatter <- df_channels %>%
 df_height_required <- df_meta %>%
   # require height scatter channels if the events are cells, since height is
   # needed for doublet exclusion
-  mutate(height_required = str_detect(material, "PBMC|lyoLeuk")) %>%
+  mutate(height_required = str_detect(material, "PBMC|lyoLeuk|lyoLeuk")) %>%
   select(file_index, height_required)
 
 df_file_channels <- df_params_std %>%
